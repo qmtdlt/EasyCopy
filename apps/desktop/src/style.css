@@ -63,6 +63,16 @@ h1 { margin: 1px 0 24px; font-weight: 650; letter-spacing: 1px; font-size: 30px;
 .empty-state > span { max-width: 320px; font-size: 13px; line-height: 1.8; }
 .settings h2 { font-size: 21px; font-weight: 550; margin: 3px 0 16px; padding-bottom: 13px; border-bottom: 1px solid var(--line); letter-spacing: .2px; }
 .settings form { max-width: 550px; }
+.settings { overflow-y: auto; }
+.autostart-setting { max-width: 550px; margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--line); }
+.autostart-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; font-size: 16px; }
+.autostart-row p, .autostart-result { margin: 7px 0 0; font-size: 12px; line-height: 1.6; color: var(--muted); }
+.autostart-switch { flex: 0 0 40px; height: 24px; padding: 3px; border-radius: 14px; background: #68605a; }
+.autostart-switch span { display: block; height: 18px; width: 18px; border-radius: 50%; background: #f4f2ef; }
+.autostart-switch[aria-checked="true"] { background: #448c50; }
+.autostart-switch[aria-checked="true"] span { transform: translateX(16px); }
+.autostart-result.error-text { color: #edb49d; }
+.autostart-retry { padding: 0 0 0 8px; text-decoration: underline; }
 fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 .server-fields { display: flex; gap: 22px; }
 .server-fields label { display: flex; flex-direction: column; gap: 7px; min-width: 0; font-size: 16px; }

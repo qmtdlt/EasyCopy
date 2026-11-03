@@ -4,11 +4,34 @@ use easycopy_protocol::*;
 use futures_util::StreamExt;
 use reqwest::Client;
 use sha2::{Digest, Sha256};
-use std::{net::SocketAddr, path::Path, sync::Arc, time::Duration};
+use std::{
+    net::SocketAddr,
+    path::Path,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tokio::{io::AsyncWriteExt, net::TcpStream};
 use tokio_tungstenite::{
     tungstenite::client::IntoClientRequest, Connector, MaybeTlsStream, WebSocketStream,
 };
+
+const TRANSFER_BUFFER_BYTES: usize = 256 * 1024;
+const PROGRESS_INTERVAL: Duration = Duration::from_millis(50);
+
+// Keep the reservation until Tokio's pending file write has completed. flush
+// waits for that write; durability is still provided by sync_all at completion.
+async fn write_download_block(
+    file: &mut tokio::fs::File,
+    directory: &Path,
+    block: &[u8],
+) -> Result<()> {
+    if !block.is_empty() {
+        let _reservation = crate::archive::reserve_write(directory, block.len() as u64)?;
+        file.write_all(block).await?;
+        file.flush().await?;
+    }
+    Ok(())
+}
 
 #[derive(Clone)]
 pub struct Transport {
@@ -128,7 +151,10 @@ impl Transport {
         bytes: u64,
         sha256: &str,
     ) -> Result<Item> {
-        let stream = tokio_util::io::ReaderStream::new(tokio::fs::File::open(path).await?);
+        let stream = tokio_util::io::ReaderStream::with_capacity(
+            tokio::fs::File::open(path).await?,
+            TRANSFER_BUFFER_BYTES,
+        );
         let response = self
             .client
             .put(self.url(&format!("/v1/items/{id}/payload")))
@@ -173,6 +199,8 @@ impl Transport {
         let mut stream = response.bytes_stream();
         let mut received = 0u64;
         let mut sha = Sha256::new();
+        let mut pending = Vec::with_capacity(TRANSFER_BUFFER_BYTES);
+        let mut last_progress = Instant::now();
         while let Some(chunk) = tokio::time::timeout(Duration::from_secs(45), stream.next())
             .await
             .context("下载长时间未收到数据")?
@@ -181,18 +209,29 @@ impl Transport {
             if received.saturating_add(chunk.len() as u64) > expected {
                 bail!("服务器发送超出声明长度的内容");
             }
-            let reservation = crate::archive::reserve_write(directory, chunk.len() as u64)?;
-            output.write_all(&chunk).await?;
-            output.flush().await?;
-            drop(reservation);
+            let mut remaining = chunk.as_ref();
+            while !remaining.is_empty() {
+                let take = remaining.len().min(TRANSFER_BUFFER_BYTES - pending.len());
+                pending.extend_from_slice(&remaining[..take]);
+                remaining = &remaining[take..];
+                if pending.len() == TRANSFER_BUFFER_BYTES {
+                    write_download_block(&mut output, directory, &pending).await?;
+                    pending.clear();
+                }
+            }
             sha.update(&chunk);
             received += chunk.len() as u64;
-            progress(received);
+            if received < expected && last_progress.elapsed() >= PROGRESS_INTERVAL {
+                progress(received);
+                last_progress = Instant::now();
+            }
         }
+        write_download_block(&mut output, directory, &pending).await?;
         output.sync_all().await?;
         if received != expected || hex::encode(sha.finalize()) != *digest {
             bail!("下载内容校验失败");
         }
+        progress(received);
         Ok(())
     }
     pub async fn cancel(&self, id: uuid::Uuid) -> Result<()> {

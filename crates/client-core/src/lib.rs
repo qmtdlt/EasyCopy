@@ -2,6 +2,8 @@ pub mod archive;
 pub mod clipboard;
 mod sync;
 pub mod transport;
+mod upload_confirmation;
+pub use upload_confirmation::{FileUploadPrompt, FILE_CONFIRM_BYTES};
 
 use anyhow::{bail, Context, Result};
 use base64::Engine;
@@ -65,10 +67,13 @@ pub enum ClientEvent {
     HistoryChanged,
     Connection { connected: bool, message: String },
     Transfer(TransferEvent),
+    FileUploadPrompt(Option<FileUploadPrompt>),
 }
 
 #[derive(Clone, Serialize, Deserialize)]
 struct Record {
+    #[serde(default)]
+    file_size_limit: Option<u64>,
     #[serde(default)]
     server_id: Option<Uuid>,
     #[serde(default)]
@@ -111,6 +116,8 @@ struct Configuration {
     device_name: String,
     address: String,
     port: u16,
+    #[serde(default = "upload_confirmation::default_threshold_mb")]
+    file_upload_threshold_mb: u64,
 }
 enum CredentialState {
     Loading,
@@ -130,6 +137,7 @@ struct State {
     latest_sequence: u64,
     local_generation: u64,
     native_sequence: u64,
+    pending_file_copy: Option<upload_confirmation::PendingFileCopy>,
     pending_local: HashSet<Uuid>,
     in_flight: HashSet<Uuid>,
 }
@@ -183,6 +191,7 @@ impl ClientCore {
                 device_name: hostname::get()?.to_string_lossy().into_owned(),
                 address: String::new(),
                 port: 8443,
+                file_upload_threshold_mb: upload_confirmation::default_threshold_mb(),
             }
         };
         let history = directory.join("history.json");
@@ -219,6 +228,7 @@ impl ClientCore {
                 latest_sequence: 0,
                 local_generation: 0,
                 native_sequence,
+                pending_file_copy: None,
                 pending_local: HashSet::new(),
                 in_flight: HashSet::new(),
             }),
@@ -447,49 +457,19 @@ impl ClientCore {
             bail!("连接密钥仅用于设置，不进入剪贴板历史");
         }
         let _serial = self.capture_serial.lock().unwrap();
-        let (id, transport) = {
-            let mut state = self.state.lock().unwrap();
-            let sequence = self.clipboard.sequence()?;
-            let written = self
-                .clipboard
-                .write_if_sequence(&content, sequence)?
-                .context("复制期间剪贴板发生变化，请重试")?;
-            state.native_sequence = written;
-            let id = self.capture_locked(&mut state, &content);
-            (
-                id,
-                if state.connected {
-                    state.transport.clone()
-                } else {
-                    None
-                },
-            )
-        };
-        if let Err(error) = self.save_capture(id, &content) {
-            {
-                let mut state = self.state.lock().unwrap();
-                state.pending_local.remove(&id);
-                state.in_flight.remove(&id);
-                if let Some(r) = state.saved.records.get_mut(&id) {
-                    r.entry.status = "failed".into();
-                    r.entry.error = Some(error.to_string());
-                }
-            }
-            let _ = self.persist();
-            let _ = self.events.send(ClientEvent::HistoryChanged);
-            return Err(error);
-        }
-        self.local_tx.send(LocalCopy {
-            id,
-            content,
-            transport,
-        })?;
-        self.persist()?;
-        let _ = self.events.send(ClientEvent::HistoryChanged);
-        Ok(id)
+        let sequence = self.clipboard.sequence()?;
+        let written = self
+            .clipboard
+            .write_if_sequence(&content, sequence)?
+            .context("复制期间剪贴板发生变化，请重试")?;
+        self.state.lock().unwrap().native_sequence = written;
+        self.accept_local_content(content, written)
     }
     pub async fn copy_item(self: &Arc<Self>, id: Uuid) -> Result<()> {
         let content = self.content(id)?;
+        if matches!(content, ClipboardContent::Files(_)) {
+            bail!("文件仅支持另存为，不能从历史记录再次复制");
+        }
         self.submit_content(content).await?;
         Ok(())
     }

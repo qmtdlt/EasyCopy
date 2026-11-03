@@ -1,0 +1,36 @@
+
+added 53 packages in 947ms
+
+8 packages are looking for funding
+  run `npm fund` for details
+
+> easycopy-desktop@0.1.0 tauri
+> tauri build --bundles app -- --locked
+
+        Info `tauri-build` dependency has workspace inheritance enabled. The features array won't be automatically rewritten. Expected features: []
+        Info `tauri` dependency has workspace inheritance enabled. The features array won't be automatically rewritten. Expected features: [macos-private-api]
+        Info Looking up installed tauri packages to check mismatched versions...
+     Running beforeBuildCommand `npm run build`
+
+> easycopy-desktop@0.1.0 build
+> vue-tsc --noEmit && vite build
+
+vite v7.3.7 building client environment for production...
+transforming...
+✓ 23 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                  0.44 kB │ gzip:  0.28 kB
+dist/assets/index-CwuGiiHg.css   9.57 kB │ gzip:  3.00 kB
+dist/assets/index-Cico47Jh.js   89.34 kB │ gzip: 35.30 kB │ map: 661.60 kB
+✓ built in 384ms
+   Compiling easycopy-desktop v0.1.0 (/Users/zhanghao/myprj/GitHub/EasyCopy/apps/desktop/src-tauri)
+    Finished `release` profile [optimized] target(s) in 35.06s
+       Built application at: /Users/zhanghao/myprj/GitHub/EasyCopy/apps/.local/autostart-release-target/release/EasyCopy
+    Bundling EasyCopy.app (/Users/zhanghao/myprj/GitHub/EasyCopy/apps/.local/autostart-release-target/release/bundle/macos/EasyCopy.app)
+    Finished 1 bundle at:
+        /Users/zhanghao/myprj/GitHub/EasyCopy/apps/.local/autostart-release-target/release/bundle/macos/EasyCopy.app (14.89 MiB)
+
+/Users/zhanghao/myprj/GitHub/EasyCopy/apps/.local/autostart-release-target/release/bundle/macos/EasyCopy.app: replacing existing signature
+/Users/zhanghao/myprj/GitHub/EasyCopy/apps/.local/autostart-release-target/release/bundle/macos/EasyCopy.app: valid on disk
+/Users/zhanghao/myprj/GitHub/EasyCopy/apps/.local/autostart-release-target/release/bundle/macos/EasyCopy.app: satisfies its Designated Requirement

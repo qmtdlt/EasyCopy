@@ -4,8 +4,12 @@ use std::time::Duration;
 use tokio_tungstenite::tungstenite::Message;
 
 impl ClientCore {
-    pub(super) fn capture_locked(&self, state: &mut State, content: &ClipboardContent) -> Uuid {
-        let id = Uuid::new_v4();
+    pub(super) fn capture_locked(
+        &self,
+        state: &mut State,
+        content: &ClipboardContent,
+        id: Uuid,
+    ) -> Uuid {
         let (kind, preview) = match content {
             ClipboardContent::Text(text) => (ContentKind::Text, text.chars().take(160).collect()),
             ClipboardContent::Image(_) => (ContentKind::Image, "图片".into()),
@@ -28,6 +32,7 @@ impl ClientCore {
         state.pending_local.insert(id);
         state.in_flight.insert(id);
         let record = Record {
+            file_size_limit: None,
             server_id: if state.connected {
                 state.pairing.as_ref().map(|p| p.server_id)
             } else {
@@ -143,50 +148,26 @@ impl ClientCore {
         while !self.stopped.load(Ordering::SeqCst) {
             {
                 let _serial = self.capture_serial.lock().unwrap();
-                let capture = (|| -> Result<Option<LocalCopy>> {
+                let capture = (|| -> Result<()> {
                     let _native_notification = self.clipboard.poll_changed();
-                    let mut state = self.state.lock().unwrap();
                     let sequence = self.clipboard.sequence()?;
-                    if sequence == state.native_sequence {
-                        return Ok(None);
+                    if sequence == self.state.lock().unwrap().native_sequence {
+                        return Ok(());
                     }
-                    // Even unsupported content constitutes a newer copy intent.
                     let content = self.clipboard.read()?;
                     if self.clipboard.sequence()? != sequence {
-                        return Ok(None);
+                        return Ok(());
                     }
-                    state.native_sequence = sequence;
-                    state.local_generation += 1;
-                    state.saved.current = None;
-                    let Some(content) = content else {
-                        return Ok(None);
-                    };
-                    // Pairing keys belong only in system credentials. Even an
-                    // incomplete key must never be cached or sent to an old relay.
-                    if Self::is_pairing_content(&content) {
-                        return Ok(None);
+                    self.state.lock().unwrap().native_sequence = sequence;
+                    // Unsupported content and pairing keys still supersede pending copies.
+                    if let Some(content) = content.filter(|c| !Self::is_pairing_content(c)) {
+                        self.accept_local_content(content, sequence)?;
+                    } else {
+                        self.invalidate_file_prompt();
                     }
-                    let id = self.capture_locked(&mut state, &content);
-                    Ok(Some(LocalCopy {
-                        id,
-                        content,
-                        transport: if state.connected {
-                            state.transport.clone()
-                        } else {
-                            None
-                        },
-                    }))
+                    Ok(())
                 })();
                 match capture {
-                    Ok(Some(copy)) => {
-                        if let Err(e) = self.save_capture(copy.id, &copy.content) {
-                            self.fail_record(copy.id, "upload", &format!("无法持久保存捕获：{e}"));
-                            continue;
-                        }
-                        let _ = self.local_tx.send(copy);
-                        let _ = self.persist();
-                        let _ = self.events.send(ClientEvent::HistoryChanged);
-                    }
                     Err(error) => {
                         let _ = self.events.send(ClientEvent::Connection {
                             connected: self.is_connected(),
@@ -300,9 +281,11 @@ impl ClientCore {
         std::fs::create_dir_all(payload.parent().unwrap())?;
         let temporary = payload.with_extension("preparing");
         let _ = std::fs::remove_file(&temporary);
+        let mut packed_digest = None;
         let (kind, files, thumbnail, detail) = match content {
             ClipboardContent::Files(paths) => {
-                archive::pack(&paths, &temporary)?;
+                let limit = self.state.lock().unwrap().saved.records[&id].file_size_limit;
+                packed_digest = Some(archive::pack_with_limit(&paths, &temporary, limit)?);
                 let restore_path = payload.parent().unwrap().join("files");
                 if restore_path.exists() {
                     std::fs::remove_dir_all(&restore_path)?;
@@ -333,7 +316,12 @@ impl ClientCore {
                 )
             }
         };
-        let (bytes, sha256) = archive::hash_file(&temporary)?;
+        // pack already hashes the complete, synced archive; restoring history
+        // only reads it. Reuse that digest instead of scanning the archive twice.
+        let (bytes, sha256) = match packed_digest {
+            Some(digest) => digest,
+            None => archive::hash_file(&temporary)?,
+        };
         std::fs::rename(temporary, &payload)?;
         {
             let mut state = self.state.lock().unwrap();
@@ -601,6 +589,7 @@ impl ClientCore {
                 state.saved.records.insert(
                     item.id,
                     Record {
+                        file_size_limit: None,
                         server_id: Some(server_id),
                         capture_saved: false,
                         download_attempts: 0,
@@ -725,6 +714,7 @@ impl ClientCore {
                             // Re-check ALL intent boundaries after full download and restore.
                             let content = self.content(id);
                             if let Ok(content) = content {
+                                let _serial = self.capture_serial.lock().unwrap();
                                 let mut state = self.state.lock().unwrap();
                                 if live
                                     && state.connected
@@ -733,6 +723,7 @@ impl ClientCore {
                                     && item.sequence == state.latest_sequence
                                     && generation == state.local_generation
                                     && state.pending_local.is_empty()
+                                    && state.pending_file_copy.is_none()
                                 {
                                     match self
                                         .clipboard

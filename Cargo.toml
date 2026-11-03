@@ -54,3 +54,8 @@ tauri-plugin-dialog = "2"
 lto = "thin"
 strip = true
 
+# macOS 27 rejects some stripped proc-macro dylibs (mis-aligned LINKEDIT).
+# Build-time tools are not shipped; keep stripping the final release binaries.
+[profile.release.build-override]
+strip = false
+

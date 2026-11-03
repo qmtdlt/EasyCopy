@@ -1,0 +1,106 @@
+    Blocking waiting for file lock on build directory
+   Compiling easycopy-relay v0.1.0 (/Users/zhanghao/myprj/GitHub/EasyCopy/crates/relay)
+   Compiling easycopy-client-core v0.1.0 (/Users/zhanghao/myprj/GitHub/EasyCopy/crates/client-core)
+   Compiling easycopy-integration-tests v0.1.0 (/Users/zhanghao/myprj/GitHub/EasyCopy/crates/integration-tests)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 30.56s
+     Running unittests src/lib.rs (target/debug/deps/easycopy_client_core-d569aa8ef5fd74c1)
+
+running 16 tests
+test archive::tests::rejects_link_archive ... ok
+test archive::tests::refuses_source_symlinks_without_touching_target ... ok
+test archive::tests::rejects_nonportable_names ... ok
+test archive::tests::refuses_impossible_disk_reservation ... ok
+test tests::stale_native_sequence_never_replaces_new_copy ... ok
+test tests::delayed_credential_result_cannot_replace_new_settings ... ok
+sandbox_extension_consume failed: 1 (Operation not permitted)
+test archive::tests::rejects_parent_aliases_even_without_directory_entries ... ok
+sandbox_extension_consume failed: 1 (Operation not permitted)
+sandbox_extension_consume failedtest tests::explicit_pairing_copy_is_rejected_before_any_clipboard_or_history_change ... ok
+: 1 (Operation not permitted)
+test clipboard::macos::tests::file_reference_tracks_rename ... ok
+test clipboard::macos::tests::deleted_file_reference_is_rejected ... ok
+sandbox_extension_consume failed: 1 (Operation not permitted)
+test clipboard::macos::tests::ordinary_file_url_preserves_escaped_name ... ok
+test archive::tests::nested_and_empty_directories_round_trip ... ok
+test clipboard::macos::tests::file_references_resolve_before_archive ... ok
+test tests::blocked_system_credentials_leave_local_copy_and_history_usable ... ok
+test tests::restart_recovers_offline_capture_without_replaying_it ... ok
+test tests::native_pairing_strings_never_enter_history_or_registration_queue ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.30s
+
+     Running tests/native_clipboard.rs (target/debug/deps/native_clipboard-e3f0262a8630354b)
+
+running 1 test
+test native_text_transparent_png_files_and_sequence_guard ... ignored, Changes real clipboard; run manually with --ignored --test-threads=1 in a controlled session
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/buffered_transfer.rs (target/debug/deps/buffered_transfer-d2709a8dc00c898a)
+
+running 1 test
+test buffered_download_flushes_tails_and_rejects_invalid_payloads ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.45s
+
+     Running tests/e2e.rs (target/debug/deps/e2e-44eb7d1b2bb56d1e)
+
+running 3 tests
+test wrong_secret_untrusted_ca_and_wrong_hostname_fail ... ok
+test real_tls_two_way_sync_ordering_files_and_offline_snapshot ... ok
+test upload_waits_for_verified_response_longer_than_45_seconds ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 46.28s
+
+     Running unittests src/lib.rs (target/debug/deps/easycopy_protocol-4367f9953e4e5a3f)
+
+running 1 test
+test tests::pairing_rejects_identity_substitution ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running unittests src/lib.rs (target/debug/deps/easycopy_relay-58ad13b58aef44ee)
+
+running 2 tests
+test tests::restart_keeps_order_and_pairing_but_invalidates_partial_upload ... ok
+test tests::snapshot_boundary_never_loses_a_racing_registration ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+     Running unittests src/main.rs (target/debug/deps/easycopy_relay-2a16dde46789fd25)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/https.rs (target/debug/deps/https-b1864c9b4c8e087d)
+
+running 8 tests
+test identity_persists_without_exposing_private_key_in_pairing ... ok
+test trusted_tls_authentication_and_identity_validation ... ok
+test truncated_stream_fails_and_retries_same_identity_from_zero ... ok
+test concurrent_upload_rejected_and_cancel_interrupts_a_stalled_stream ... ok
+test snapshot_has_ten_records_and_global_highwater_including_unfinished_intents ... ok
+test registration_is_idempotent_and_order_does_not_follow_upload_completion ... ok
+test cancellation_is_a_tombstone_and_disk_reserve_rejects_before_upload ... ok
+test streamed_payload_progress_hash_failure_retry_and_download ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.61s
+
+   Doc-tests easycopy_client_core
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests easycopy_protocol
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests easycopy_relay
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

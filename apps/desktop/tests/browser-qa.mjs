@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import assert from 'node:assert/strict'
 
-const output = resolve('tests/artifacts')
+const output = resolve(process.env.QA_OUTPUT || 'tests/artifacts')
 await mkdir(output, { recursive: true })
 const profile = await mkdtemp(`${tmpdir()}/easycopy-browser-qa-`)
 const chrome = spawn(process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', [
@@ -78,16 +78,47 @@ try {
       { ...base, id: 'files-b', kind: 'files', deviceName: 'Windows', createdAt: base.createdAt - 1440000, preview: '项目素材', detail: '文件夹 · 18.6 MB' },
     ];
     window.__qaCalls = [];
+    window.__qaFilePrompt = null;
+    window.__qaFileThreshold = 50;
+    window.__qaFileThresholdError = "";
+    window.__qaAutostart = { enabled: false, canEnable: true, reason: null };
+    window.__qaAutostartError = '';
+    window.__qaAutostartReadError = '';
+    window.__qaMaximized = false;
     window.__qaEmit = (event, payload) => { for (const [id, callback] of listeners.get(event) || []) callbacks.get(callback)?.({ event, id, payload }); };
     window.__TAURI_INTERNALS__ = {
+      metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
       transformCallback(callback) { const id = ++n; callbacks.set(id, callback); return id; },
       unregisterCallback(id) { callbacks.delete(id); },
       async invoke(cmd, args) {
         window.__qaCalls.push({ cmd, args });
         if (cmd === 'plugin:event|listen') { const id = ++n; const list = listeners.get(args.event) || []; list.push([id,args.handler]); listeners.set(args.event,list); return id; }
         if (cmd === 'plugin:event|unlisten') return;
+        if (cmd === 'plugin:window|is_maximized') return window.__qaMaximized;
+        if (cmd === 'plugin:window|toggle_maximize') { window.__qaMaximized = !window.__qaMaximized; return; }
+        if (['plugin:window|minimize', 'plugin:window|close', 'plugin:window|start_dragging'].includes(cmd)) return;
+        if (cmd === 'get_file_upload_threshold') return window.__qaFileThreshold;
+        if (cmd === 'set_file_upload_threshold') {
+          if (window.__qaFileThresholdError) throw new Error(window.__qaFileThresholdError);
+          window.__qaFileThreshold = args.mb; return;
+        }
+        if (cmd === 'get_file_upload_prompt') return window.__qaFilePrompt;
+        if (cmd === 'resolve_file_upload') {
+          window.__qaFilePrompt = null;
+          window.__qaEmit('file-upload-prompt', null);
+          return;
+        }
         if (cmd === 'list_history') return rows;
         if (cmd === 'get_settings') return { address: '192.168.1.10', port: 8080, hasPairingKey: true };
+        if (cmd === 'get_autostart') {
+          if (window.__qaAutostartReadError) throw new Error(window.__qaAutostartReadError);
+          return {...window.__qaAutostart};
+        }
+        if (cmd === 'set_autostart') {
+          if (window.__qaAutostartError) throw new Error(window.__qaAutostartError);
+          window.__qaAutostart.enabled = args.enabled;
+          return {...window.__qaAutostart};
+        }
         if (cmd === 'get_connection') return { connected: false, message: '界面测试数据 · 未连接真实服务器' };
         if (cmd === 'test_connection') return { protocol_version: 1, server_id: 'test', logical_name: 'test.invalid' };
         if (cmd === 'copy_item' || cmd === 'save_item' || cmd === 'save_settings' || cmd === 'overlay_ready' || cmd === 'overlay_hidden') return;
@@ -104,17 +135,93 @@ try {
   await send('Page.addScriptToEvaluateOnNewDocument', { source })
   await send('Page.navigate', { url: process.env.QA_URL || 'http://127.0.0.1:1420/' })
   await waitFor("document.querySelectorAll('.history-row').length === 5")
+  await waitFor("window.__qaCalls.some(c => c.cmd === 'plugin:window|is_maximized')")
+  await evaluate("document.querySelector('.window-control[aria-label=最大化]').click()")
+  await waitFor("document.querySelector('.window-control[aria-label=还原]') !== null")
+  await evaluate("document.querySelector('.window-control[aria-label=还原]').click()")
+  await waitFor("document.querySelector('.window-control[aria-label=最大化]') !== null")
+  await evaluate("document.querySelector('.window-control[aria-label=最小化]').click()")
+  await waitFor("window.__qaCalls.some(c => c.cmd === 'plugin:window|minimize') && !document.querySelector('.window-close').disabled")
+  await evaluate("document.querySelector('.window-close').click()")
+  await waitFor("window.__qaCalls.some(c => c.cmd === 'plugin:window|close')")
   await screenshot('history-fixture.png')
   await evaluate("document.querySelectorAll('.history-row')[1].focus()")
   await screenshot('history-hover-fixture.png')
   assert.equal(await evaluate("getComputedStyle(document.querySelectorAll('.item-actions')[1]).opacity"), '1')
   await evaluate("document.querySelectorAll('.history-row')[1].querySelector('.item-actions button').click()")
   await waitFor("window.__qaCalls.some(c => c.cmd === 'copy_item' && c.args.id === 'image-a')")
+  assert.deepEqual(await evaluate("Array.from(document.querySelectorAll('.history-row')[2].querySelectorAll('.item-actions button'), b => b.textContent.trim())"), ['另存为'])
+  await evaluate("document.querySelectorAll('.history-row')[2].querySelector('.item-actions button').click()")
+  await waitFor("window.__qaCalls.some(c => c.cmd === 'save_item' && c.args.id === 'files-a')")
+  assert.equal(await evaluate("window.__qaCalls.some(c => c.cmd === 'copy_item' && c.args.id.startsWith('files'))"), false)
+  for (const [id, action, expected] of [['large-default', 'enter', false], ['large-escape', 'escape', false], ['large-close', 'close', false], ['large-yes', 'yes', true]]) {
+    await evaluate(`window.__qaFilePrompt = { id: '${id}', bytes: 75000001, thresholdMb: 50 }; window.__qaEmit('file-upload-prompt', window.__qaFilePrompt)`)
+    await waitFor("document.querySelector('.file-upload-dialog').open && document.activeElement.textContent.trim() === '否'")
+    if (action === 'enter') {
+      await screenshot('file-upload-confirmation.png')
+      await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
+      await send('Input.dispatchKeyEvent', { type: 'char', text: '\r', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
+      await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
+    } else if (action === 'escape') {
+      await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+      await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 })
+    } else await evaluate(`document.querySelector('${action === 'close' ? '.file-upload-close' : '.file-upload-actions .secondary'}').click()`)
+    try { await waitFor("!document.querySelector('.file-upload-dialog').open") }
+    catch (error) { throw new Error(`${id}: ${error.message}; state=${JSON.stringify(await evaluate("({focus:document.activeElement.textContent, calls:window.__qaCalls.slice(-4)})"))}`) }
+    assert.deepEqual(await evaluate(`window.__qaCalls.find(c => c.cmd === 'resolve_file_upload' && c.args.id === '${id}').args`), { id, upload: expected })
+  }
+  await evaluate("window.__qaEmit('file-upload-prompt', { id: 'superseded', bytes: 80000000, thresholdMb: 50 })")
+  await waitFor("document.querySelector('.file-upload-dialog').open")
+  await evaluate("window.__qaEmit('file-upload-prompt', null)")
+  await waitFor("!document.querySelector('.file-upload-dialog').open")
+  assert.equal(await evaluate("window.__qaCalls.some(c => c.cmd === 'resolve_file_upload' && c.args.id === 'superseded')"), false)
   await evaluate("document.querySelectorAll('.filters button')[1].click()")
   await waitFor("document.querySelectorAll('.history-row').length === 2")
   await evaluate("document.querySelectorAll('nav button')[1].click()")
   await waitFor("!!document.querySelector('.settings')")
+  await waitFor("document.querySelector('[role=switch]').disabled === false")
+  await waitFor("document.querySelector('#file-upload-threshold').disabled === false")
+  assert.equal(await evaluate("document.querySelector('#file-upload-threshold').value"), '50')
+  assert.equal(await evaluate("window.__qaCalls.some(c => c.cmd === 'set_file_upload_threshold')"), false)
+  for (const value of [10, 100, 37]) {
+    await evaluate(`{ const field = document.querySelector('#file-upload-threshold'); field.value = '${value}'; field.dispatchEvent(new Event('input', { bubbles: true })); document.querySelector('.file-upload-setting button').click(); }`)
+    await waitFor(`window.__qaFileThreshold === ${value} && !document.querySelector('#file-upload-threshold').disabled`)
+  }
+  await evaluate("window.__qaFileThresholdError = '保存失败（测试）'; document.querySelector('.file-upload-setting button').click()")
+  await waitFor("document.querySelector('.file-upload-setting-result').textContent.includes('保存失败')")
+  await screenshot('settings-file-threshold-error.png')
+  await evaluate("window.__qaFileThresholdError = ''; { const field = document.querySelector('#file-upload-threshold'); field.value = '50'; field.dispatchEvent(new Event('input', { bubbles: true })); document.querySelector('.file-upload-setting button').click(); }")
+  await waitFor("window.__qaFileThreshold === 50 && document.querySelector('.file-upload-setting-result').textContent.includes('已保存')")
   await screenshot('settings-fixture.png')
+  assert.equal(await evaluate("document.querySelector('[role=switch]').getAttribute('aria-checked')"), 'false')
+  assert.equal(await evaluate("window.__qaCalls.some(c => c.cmd === 'set_autostart')"), false, 'reading settings must not register startup')
+  await evaluate("document.querySelector('[role=switch]').click()")
+  await waitFor("document.querySelector('[role=switch]').getAttribute('aria-checked') === 'true'")
+  await evaluate("document.querySelector('[role=switch]').click()")
+  await waitFor("document.querySelector('[role=switch]').getAttribute('aria-checked') === 'false'")
+  assert.deepEqual(await evaluate("window.__qaCalls.filter(c => c.cmd === 'set_autostart').map(c => c.args)"), [{enabled:true}, {enabled:false}])
+  await evaluate("window.__qaAutostartError = '注册失败（测试）'; document.querySelector('[role=switch]').click()")
+  await waitFor("document.querySelector('#autostart-result').textContent.includes('注册失败')")
+  assert.equal(await evaluate("document.querySelector('[role=switch]').getAttribute('aria-checked')"), 'false')
+  await evaluate("window.__qaAutostartError = ''; window.__qaAutostart.enabled = true; window.dispatchEvent(new Event('focus'))")
+  await waitFor("document.querySelector('[role=switch]').getAttribute('aria-checked') === 'true'")
+  await evaluate("window.__qaAutostartReadError = '读取失败（测试）'; window.dispatchEvent(new Event('focus'))")
+  await waitFor("document.querySelector('#autostart-result').textContent.includes('读取失败')")
+  assert.equal(await evaluate("document.querySelector('[role=switch]').disabled"), true)
+  await evaluate("window.__qaAutostartReadError = ''; document.querySelector('.autostart-retry').click()")
+  await waitFor("document.querySelector('[role=switch]').getAttribute('aria-checked') === 'true'")
+  await evaluate("window.__qaAutostart = {enabled:false, canEnable:false, reason:'开发调试版本不支持开启自启动'}; window.dispatchEvent(new Event('focus'))")
+  await waitFor("document.querySelector('#autostart-result').textContent.includes('开发调试版本')")
+  assert.equal(await evaluate("document.querySelector('[role=switch]').disabled"), true)
+  await screenshot('settings-autostart-development.png')
+  // The added row and its error/retry text must remain reachable at the minimum window size.
+  await send('Emulation.setDeviceMetricsOverride', { width: 760, height: 540, deviceScaleFactor: 1, mobile: false })
+  assert.equal(await evaluate("document.querySelector('.settings').scrollWidth <= document.querySelector('.settings').clientWidth"), true)
+  await screenshot('settings-autostart-minimum.png')
+  await evaluate("document.querySelector('#file-upload-threshold').scrollIntoView({block:'center'})")
+  assert.equal(await evaluate("document.querySelector('#file-upload-threshold').getBoundingClientRect().bottom < innerHeight"), true)
+  await screenshot('settings-file-threshold-minimum.png')
+  await send('Emulation.setDeviceMetricsOverride', { width: 1000, height: 700, deviceScaleFactor: 1, mobile: false })
   assert.equal(await evaluate("document.querySelector('#pairing-key').type"), 'password')
   await evaluate("document.querySelector('.reveal-key').click()")
   assert.equal(await evaluate("document.querySelector('#pairing-key').type"), 'text')
@@ -138,10 +245,10 @@ try {
   assert.equal(errors.length, 0, JSON.stringify(errors))
   await writeFile(resolve(output, 'browser-qa.json'), JSON.stringify({
     environment: 'Chrome headless, 1000x700, mock Tauri bridge only',
-    results: ['history fixture and hover actions', 'copy command arguments', 'type filter', 'settings visibility and save preserves stored key', 'upload/download mirrored rendering', 'failure state and hide callback'],
+    results: ['window minimize, maximize/restore and close commands', 'file history save-only, default decline, Escape, close, explicit approval and stale prompt dismissal', 'file threshold default, custom values, persistence command and save failure', 'history fixture and hover actions', 'copy command arguments', 'type filter', 'settings visibility and save preserves stored key', 'autostart defaults off without writes, enable/disable, failed write readback, external state refresh, read failure/retry, development restriction, minimum width', 'upload/download mirrored rendering', 'failure state and hide callback'],
     consoleExceptions: errors,
   }, null, 2))
-  console.log('Browser UI checks passed; screenshots and report: tests/artifacts/')
+  console.log(`Browser UI checks passed; screenshots and report: ${output}`)
 } finally {
   socket?.close()
   chrome.kill('SIGTERM')

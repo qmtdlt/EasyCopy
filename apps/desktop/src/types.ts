@@ -20,6 +20,8 @@ export interface PublicSettings {
   hasPairingKey: boolean
 }
 
+export interface AutostartStatus { enabled: boolean; canEnable: boolean; reason: string | null }
+
 export interface SettingsInput {
   address: string
   port: number

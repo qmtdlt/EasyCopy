@@ -4,10 +4,14 @@ use sha2::{Digest, Sha256};
 use std::{
     collections::{HashMap, HashSet},
     fs::{self, File, OpenOptions},
-    io::{Read, Write},
+    io::{BufWriter, Read, Write},
     path::{Component, Path, PathBuf},
 };
 use unicode_normalization::UnicodeNormalization;
+
+// Buffer before GuardedWriter so each actual disk write still reserves space.
+// TAR's small writes otherwise issue a filesystem space query for every 8 KiB.
+const FILE_BUFFER_BYTES: usize = 256 * 1024;
 
 pub fn ensure_space(path: &Path, bytes: u64) -> Result<()> {
     let free = fs2::available_space(path)?;
@@ -139,6 +143,14 @@ pub fn hash_file(path: &Path) -> Result<(u64, String)> {
 
 /// Snapshot ordinary files without following links. TAR preserves nested and empty directories.
 pub fn pack(paths: &[PathBuf], destination: &Path) -> Result<(u64, String)> {
+    pack_with_limit(paths, destination, None)
+}
+
+pub(crate) fn pack_with_limit(
+    paths: &[PathBuf],
+    destination: &Path,
+    limit: Option<u64>,
+) -> Result<(u64, String)> {
     if paths.is_empty() {
         bail!("没有要同步的文件");
     }
@@ -146,6 +158,7 @@ pub fn pack(paths: &[PathBuf], destination: &Path) -> Result<(u64, String)> {
     let mut seen = HashSet::new();
     let mut aliases = HashMap::new();
     let mut estimate = 10240u64;
+    let mut file_bytes = 0u64;
     for root in paths {
         let root_name = root.file_name().context("不能同步文件系统根目录")?;
         let parent = root.parent().context("没有父目录")?;
@@ -158,6 +171,14 @@ pub fn pack(paths: &[PathBuf], destination: &Path) -> Result<(u64, String)> {
             let meta = fs::symlink_metadata(entry.path())?;
             if !meta.is_file() && !meta.is_dir() {
                 bail!("不支持符号链接或特殊文件：{}", entry.path().display());
+            }
+            if meta.is_file() {
+                file_bytes = file_bytes
+                    .checked_add(meta.len())
+                    .context("文件总大小超出支持范围")?;
+                if limit.is_some_and(|limit| file_bytes > limit) {
+                    bail!("文件已增大至超过上传确认阈值，请重新复制并确认上传");
+                }
             }
             let relative = entry.path().strip_prefix(parent)?;
             let name = checked_relative(relative)?;
@@ -179,7 +200,7 @@ pub fn pack(paths: &[PathBuf], destination: &Path) -> Result<(u64, String)> {
             .open(destination)?,
         directory: directory.into(),
     };
-    let mut archive = tar::Builder::new(writer);
+    let mut archive = tar::Builder::new(BufWriter::with_capacity(FILE_BUFFER_BYTES, writer));
     archive.follow_symlinks(false);
     for (source, name, before) in entries {
         let now = fs::symlink_metadata(&source)?;
@@ -228,8 +249,9 @@ pub fn pack(paths: &[PathBuf], destination: &Path) -> Result<(u64, String)> {
             }
         }
     }
-    let writer = archive.into_inner()?;
-    writer.file.sync_all()?;
+    let mut writer = archive.into_inner()?;
+    writer.flush()?;
+    writer.get_ref().file.sync_all()?;
     hash_file(destination)
 }
 
@@ -265,15 +287,17 @@ pub fn unpack(payload: &Path, destination: &Path) -> Result<Vec<PathBuf>> {
             } else {
                 ensure_space(destination, entry.size())?;
                 fs::create_dir_all(target.parent().unwrap())?;
-                let mut output = GuardedWriter {
+                let output = GuardedWriter {
                     file: OpenOptions::new()
                         .create_new(true)
                         .write(true)
                         .open(&target)?,
                     directory: destination.into(),
                 };
+                let mut output = BufWriter::with_capacity(FILE_BUFFER_BYTES, output);
                 std::io::copy(&mut entry, &mut output)?;
-                output.file.sync_all()?;
+                output.flush()?;
+                output.get_ref().file.sync_all()?;
             }
         }
         if roots.is_empty() {
@@ -322,6 +346,23 @@ pub fn copy_saved(source: &Path, target: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn buffered_archive_digest_and_snapshot_survive_source_changes() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source.bin");
+        let bytes: Vec<_> = (0..FILE_BUFFER_BYTES * 2 + 123)
+            .map(|i| (i % 251) as u8)
+            .collect();
+        fs::write(&source, &bytes).unwrap();
+        let payload = root.path().join("payload.tar");
+        let packed_digest = pack(std::slice::from_ref(&source), &payload).unwrap();
+        assert_eq!(packed_digest, hash_file(&payload).unwrap());
+        fs::write(&source, "changed after capture").unwrap();
+        let files = unpack(&payload, &root.path().join("snapshot")).unwrap();
+        assert_eq!(fs::read(&files[0]).unwrap(), bytes);
+        assert_eq!(packed_digest, hash_file(&payload).unwrap());
+    }
+
     #[test]
     fn nested_and_empty_directories_round_trip() {
         let root = tempfile::tempdir().unwrap();

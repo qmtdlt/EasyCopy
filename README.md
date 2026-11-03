@@ -10,7 +10,7 @@ Mac 与 Windows 双向剪贴板同步。Rust 核心与 Linux 中转服务，Taur
 ./script/build_and_run.sh
 ```
 
-该脚本构建并打开 `target/debug/bundle/macos/EasyCopy.app`。支持 `--verify`、`--debug`、`--logs`。Codex 的 Run 按钮也调用此脚本。关闭窗口后仍继续同步；从菜单栏托盘打开或退出。
+该脚本默认构建并打开 **Release** 版 `target/release/bundle/macos/EasyCopy.app`，适合日常大文件传输。`--build` 只构建和签名，`--verify` 启动并检查进程，`--logs` 查看日志；`--debug` 才构建 Debug 版并进入调试器。Codex 的 Run 按钮也调用此脚本。关闭窗口后仍继续同步；从菜单栏托盘打开或退出。
 
 Mac 运行脚本会为整个应用包签名，优先使用钥匙串中唯一的 Apple Development 证书；可通过 `EASYCOPY_SIGNING_IDENTITY` 指定证书名称或指纹。无唯一开发证书时退回完整临时签名并提示，局域网权限识别不保证同样稳定。应用包含局域网用途说明；首次出现系统询问时允许 EasyCopy 连接本地网络。
 
@@ -53,7 +53,7 @@ cargo run --locked -p easycopy-relay -- pairing --data-dir .local/relay
 
 需要 Rust stable（MSVC 工具链）、Visual Studio C++ Build Tools（含 C++ x64 工具和 Windows SDK）、WebView2 Runtime 和 Node.js 22+。
 
-双击仓库根目录的 `Start-EasyCopy.cmd`。首次自动安装 npm 依赖、构建并启动真正的桌面客户端；之后直接打开 `.local/windows-client/EasyCopy.exe`，不依赖 Vite 或终端常驻。关闭主窗口后仍在后台运行，从系统托盘菜单打开或退出。若已在运行，脚本提示使用托盘，不重复启动。
+双击仓库根目录的 `Start-EasyCopy.cmd`。首次自动安装 npm 依赖、构建并启动 **Release** 桌面客户端；之后直接打开 `.local/windows-client/EasyCopy.exe`，不依赖 Vite 或终端常驻。没有构建模式标记的旧 Debug 客户端会在退出后首次启动时自动重建为 Release。关闭主窗口后仍在后台运行，从系统托盘菜单打开或退出。若已在运行，脚本提示使用托盘，不重复启动。
 
 更新代码后，在仓库根目录重新构建（先从托盘退出客户端）：
 
@@ -61,7 +61,7 @@ cargo run --locked -p easycopy-relay -- pairing --data-dir .local/relay
 .\Start-EasyCopy.cmd -Build
 ```
 
-开发热更新用 `.\Start-EasyCopy.cmd -Dev`；隔离验收用 `.\Start-EasyCopy.cmd -Acceptance`（配置位于 `.local/windows-acceptance`）。普通配置和历史位于 `%APPDATA%\com.easycopy.desktop`，连接密钥保存在 Windows 系统凭据中。不要手工把 `target/debug/EasyCopy.exe` 当作固定入口：开发模式也会覆盖这个文件，它可能需要 Vite。
+开发热更新用 `.\Start-EasyCopy.cmd -Dev`；隔离验收用 `.\Start-EasyCopy.cmd -Acceptance`（配置位于 `.local/windows-acceptance`）。需要带前端资源的 Debug 客户端时用 `-DebugBuild -Build`，输出到独立的 `.local/windows-debug-client/`。普通配置和历史位于 `%APPDATA%\com.easycopy.desktop`，连接密钥保存在 Windows 系统凭据中。不要手工把 `target/debug/EasyCopy.exe` 当作固定入口：开发模式也会覆盖这个文件，它可能需要 Vite。
 
 连接时需填写 Windows 能访问的中转服务器 IP/域名、实际暴露端口和完整配对串。Mac 验收使用的 `127.0.0.1:58444` 是 Mac 本机地址，不能直接用于 Windows。配对串只在应用设置中输入。
 
@@ -77,7 +77,9 @@ npm run tauri -- build --bundles nsis
 
 ## 使用规则
 
-- 自动保留最近 10 条，按复制意图顺序展示；鼠标悬停后可再次复制或另存为。再次复制会创建新的同步意图。
+- 自动保留最近 10 条，按复制意图顺序展示。文本、图片可再次复制或另存为，再次复制会创建新的同步意图；文件与文件夹仅支持另存为。
+- 本机复制文件时，按本次所选文件及文件夹内部普通文件的总大小判断是否询问上传。设置页可修改“文件上传确认”阈值，默认 50 MB（1 MB = 1,000,000 字节），支持正整数，保存后从下一次复制生效。严格超过阈值才询问，默认选“否”；按 Esc、关闭弹窗或主窗口也视为拒绝，不影响本机粘贴，不登记任务、不打包，重连或重启也不补发。
+- 等待确认时复制新内容，会取消旧询问；重新复制同一文件会重新判断。远端接收不弹上传询问。图片内容不受文件阈值限制，图片文件按文件处理。
 - 图片内容和图片文件分别处理；文件粘贴得到原文件/目录，不变成 ZIP，也不引用另一台电脑的路径。
 - 离线复制只保留本地历史。重连只补历史，不自动覆盖当前剪贴板；已经登记的中断任务沿原身份从头重试，最多 3 次自动重试。
 - 当前剪贴板和在途任务引用的缓存持续保留；无引用缓存延迟 24 小时清理。另存为后的用户文件不受缓存回收影响。
@@ -87,6 +89,8 @@ npm run tauri -- build --bundles nsis
 - 不同应用接受的剪贴板格式有差别。微信、Finder/资源管理器的实测覆盖见测试记录，不承诺所有应用都接受文件夹或应用私有格式。
 
 ## 验证
+
+大文件分阶段基准、隔离局域网测量及 Windows 实机验收边界见 [大文件传输性能](docs/大文件传输性能.md)。
 
 ```sh
 cargo test --locked -p easycopy-protocol -p easycopy-client-core -p easycopy-relay -p easycopy-integration-tests

@@ -4,6 +4,9 @@ import { api, events, native } from './bridge'
 import type { ConnectionState, ContentKind, HistoryEntry, SettingsInput } from './types'
 import Icon from './components/Icon.vue'
 import WindowTitlebar from './components/WindowTitlebar.vue'
+import AutostartSetting from './components/AutostartSetting.vue'
+import FileUploadConfirmation from './components/FileUploadConfirmation.vue'
+import FileUploadSetting from './components/FileUploadSetting.vue'
 
 const page = ref<'history' | 'settings'>('history')
 const filter = ref<'all' | ContentKind>('all')
@@ -139,8 +142,8 @@ onBeforeUnmount(() => { destroyed = true; stopEvents?.(); if (noticeTimer) clear
               <div class="item-description"><p :title="item.preview">{{ item.preview || (item.kind === 'image' ? '图片' : item.kind === 'files' ? '文件' : '空文本') }}</p><span :class="{ 'error-text': !!item.error }" :title="item.error || item.detail">{{ statusText(item) || item.detail || (item.kind === 'text' ? '文本' : '') }}</span></div>
             </div>
             <div class="item-actions">
-              <button :disabled="!available(item) || rowBusy === item.id" @click="act(item, 'copy')"><Icon name="copy" :size="17" />复制</button>
-              <button :disabled="!available(item) || rowBusy === item.id" @click="act(item, 'save')"><Icon name="download" :size="17" />{{ item.kind === 'files' ? '保存' : '另存为' }}</button>
+              <button v-if="item.kind !== 'files'" :disabled="!available(item) || rowBusy === item.id" @click="act(item, 'copy')"><Icon name="copy" :size="17" />复制</button>
+              <button :disabled="!available(item) || rowBusy === item.id" @click="act(item, 'save')"><Icon name="download" :size="17" />另存为</button>
             </div>
           </li>
         </ul>
@@ -165,8 +168,11 @@ onBeforeUnmount(() => { destroyed = true; stopEvents?.(); if (noticeTimer) clear
             </div>
           </fieldset>
         </form>
+        <AutostartSetting />
+        <FileUploadSetting />
       </section>
     </main>
     <div v-if="notice" class="toast" :class="{ 'toast-error': noticeError }" role="status"><Icon :name="noticeError ? 'alert' : 'check'" :size="18" /><span>{{ notice }}</span><button aria-label="关闭提示" @click="notice = ''"><Icon name="close" :size="16" /></button></div>
+    <FileUploadConfirmation />
   </div>
 </template>

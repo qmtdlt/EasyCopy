@@ -1,7 +1,9 @@
+mod autostart;
 mod overlay;
 
 use easycopy_client_core::{
-    ClientCore, ClientEvent, HistoryEntry, PublicSettings, SettingsInput, TransferEvent,
+    ClientCore, ClientEvent, FileUploadPrompt, HistoryEntry, PublicSettings, SettingsInput,
+    TransferEvent,
 };
 use easycopy_protocol::{ContentKind, ServerInfo};
 use serde::Serialize;
@@ -24,6 +26,32 @@ struct DesktopState {
 #[tauri::command]
 fn list_history(state: tauri::State<'_, DesktopState>) -> Vec<HistoryEntry> {
     state.core.history()
+}
+#[tauri::command]
+fn get_file_upload_prompt(state: tauri::State<'_, DesktopState>) -> Option<FileUploadPrompt> {
+    state.core.file_upload_prompt()
+}
+#[tauri::command]
+fn get_file_upload_threshold(state: tauri::State<'_, DesktopState>) -> u64 {
+    state.core.file_upload_threshold_mb()
+}
+#[tauri::command]
+fn set_file_upload_threshold(state: tauri::State<'_, DesktopState>, mb: u64) -> Result<(), String> {
+    state
+        .core
+        .set_file_upload_threshold_mb(mb)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn resolve_file_upload(
+    state: tauri::State<'_, DesktopState>,
+    id: String,
+    upload: bool,
+) -> Result<(), String> {
+    state
+        .core
+        .resolve_file_upload(Uuid::parse_str(&id).map_err(|_| "无效记录身份")?, upload)
+        .map_err(|e| e.to_string())
 }
 #[tauri::command]
 fn get_settings(state: tauri::State<'_, DesktopState>) -> PublicSettings {
@@ -161,6 +189,7 @@ fn transfer(app: &tauri::AppHandle, event: TransferEvent) {
 fn show_main(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
+        let _ = window.unminimize();
         let _ = window.set_focus();
     }
 }
@@ -170,13 +199,24 @@ pub fn run() {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            if !autostart::is_login_launch(&args) {
+                show_main(app);
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             list_history,
+            get_file_upload_prompt,
+            get_file_upload_threshold,
+            set_file_upload_threshold,
+            resolve_file_upload,
             get_settings,
             get_connection,
             test_connection,
             save_settings,
+            autostart::get_autostart,
+            autostart::set_autostart,
             copy_item,
             save_item,
             overlay_ready,
@@ -211,6 +251,8 @@ pub fn run() {
             .decorations(false)
             .inner_size(1000.0, 700.0)
             .min_inner_size(760.0, 540.0)
+            .visible(!autostart::is_login_launch(std::env::args()))
+            .focused(!autostart::is_login_launch(std::env::args()))
             .center();
             main.build()?;
             overlay::create(app)?;
@@ -253,8 +295,21 @@ pub fn run() {
                             let h = handle.clone();
                             let _ = handle.run_on_main_thread(move || transfer(&h, event));
                         }
+                        Ok(ClientEvent::FileUploadPrompt(_)) => {
+                            // Read current state: queued events may refer to an older copy.
+                            let prompt = core.file_upload_prompt();
+                            if prompt.is_some() {
+                                show_main(&handle);
+                            }
+                            let _ = handle.emit_to("main", "file-upload-prompt", prompt);
+                        }
                         Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {
                             let _ = handle.emit_to("main", "history-changed", core.history());
+                            let prompt = core.file_upload_prompt();
+                            if prompt.is_some() {
+                                show_main(&handle);
+                            }
+                            let _ = handle.emit_to("main", "file-upload-prompt", prompt);
                         }
                         Err(_) => break,
                     }
@@ -266,6 +321,10 @@ pub fn run() {
             if window.label() == "main" {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
+                    let core = &window.state::<DesktopState>().core;
+                    if let Some(prompt) = core.file_upload_prompt() {
+                        let _ = core.resolve_file_upload(prompt.id, false);
+                    }
                     let _ = window.hide();
                 }
             }
