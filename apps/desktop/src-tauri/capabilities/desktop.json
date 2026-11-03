@@ -3,5 +3,5 @@
   "identifier": "desktop",
   "description": "Local EasyCopy windows only",
   "windows": ["main", "transfer"],
-  "permissions": ["core:event:default", "core:window:allow-start-dragging", "core:window:allow-minimize", "core:window:allow-toggle-maximize", "core:window:allow-close"]
+  "permissions": ["core:event:default", "core:window:allow-start-dragging", "core:window:allow-minimize", "core:window:allow-toggle-maximize", "core:window:allow-internal-toggle-maximize", "core:window:allow-is-maximized", "core:window:allow-close"]
 }
