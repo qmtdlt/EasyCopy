@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { api, events, native } from './bridge'
 import type { ConnectionState, ContentKind, HistoryEntry, SettingsInput } from './types'
 import Icon from './components/Icon.vue'
+import WindowTitlebar from './components/WindowTitlebar.vue'
 
 const page = ref<'history' | 'settings'>('history')
 const filter = ref<'all' | ContentKind>('all')
@@ -105,7 +106,7 @@ onBeforeUnmount(() => { destroyed = true; stopEvents?.(); if (noticeTimer) clear
 
 <template>
   <div class="app-shell">
-    <div class="titlebar" data-tauri-drag-region></div>
+    <WindowTitlebar @error="showNotice($event, true)" />
     <aside class="sidebar">
       <div class="brand" data-tauri-drag-region><Icon name="copy" :size="29" /><span>EasyCopy</span></div>
       <nav aria-label="主菜单">

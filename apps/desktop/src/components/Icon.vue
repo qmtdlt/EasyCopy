@@ -13,6 +13,9 @@ const paths: Record<string, string> = {
   check: 'M21 11v1a9 9 0 1 1-5.3-8.2 M8 11l4 4L22 5',
   alert: 'M12 8v5 M12 17h.01 M10.3 3.9 1.8 18.4A1.7 1.7 0 0 0 3.3 21h17.4a1.7 1.7 0 0 0 1.5-2.6L13.7 3.9a2 2 0 0 0-3.4 0Z',
   close: 'm6 6 12 12 M6 18 18 6',
+  minimize: 'M5 12h14',
+  maximize: 'M5 5h14v14H5Z',
+  restore: 'M9 8V4h11v11h-4 M4 9h11v11H4Z',
 }
 </script>
 

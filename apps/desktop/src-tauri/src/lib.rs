@@ -208,13 +208,10 @@ pub fn run() {
                 tauri::WebviewUrl::App("index.html".into()),
             )
             .title("EasyCopy")
+            .decorations(false)
             .inner_size(1000.0, 700.0)
             .min_inner_size(760.0, 540.0)
             .center();
-            #[cfg(target_os = "macos")]
-            let main = main
-                .title_bar_style(tauri::TitleBarStyle::Overlay)
-                .hidden_title(true);
             main.build()?;
             overlay::create(app)?;
             let open =
