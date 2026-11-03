@@ -57,6 +57,7 @@ struct WndClass {
 #[link(name = "user32")]
 unsafe extern "system" {
     fn GetClipboardSequenceNumber() -> u32;
+    fn GetClipboardOwner() -> Handle;
     fn OpenClipboard(owner: Handle) -> i32;
     fn CloseClipboard() -> i32;
     fn EmptyClipboard() -> i32;
@@ -336,7 +337,18 @@ impl Clipboard for NativeClipboard {
                 put_bytes(format, &bytes)?;
             }
         }
-        Ok(Some(self.sequence()?))
+        let written_sequence = self.sequence()?;
+        // Windows synthesizes additional formats on CloseClipboard (notably
+        // ANSI/OEM text and locale), which can advance the sequence again.
+        // Reopen before sampling, so an intervening external owner is never
+        // mistaken for our own write and suppressed by the monitor.
+        drop(_open);
+        let _verify = Open::acquire()?;
+        if unsafe { GetClipboardOwner() } == OWNER.load(Ordering::SeqCst) {
+            Ok(Some(self.sequence()?))
+        } else {
+            Ok(Some(written_sequence))
+        }
     }
 }
 fn read_u32(bytes: &[u8], at: usize) -> Result<u32> {
