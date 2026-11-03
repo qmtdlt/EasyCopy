@@ -1,0 +1,2 @@
+NAME                          IMAGE                   COMMAND                  SERVICE   CREATED          STATUS                    PORTS
+easycopy-acceptance-relay-1   easycopy-relay:latest   "easycopy-relay serve"   relay     19 minutes ago   Up 19 minutes (healthy)   127.0.0.1:58444->8443/tcp

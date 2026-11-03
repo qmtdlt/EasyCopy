@@ -1,0 +1,11 @@
+   Compiling easycopy-client-core v0.1.0 (/Users/zhanghao/myprj/GitHub/EasyCopy/crates/client-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.16s
+     Running tests/native_clipboard.rs (target/debug/deps/native_clipboard-44a0e4d743554944)
+
+running 1 test
+test native_text_transparent_png_files_and_sequence_guard ... sandbox_extension_consume failed: 1 (Operation not permitted)
+sandbox_extension_consume failed: 1 (Operation not permitted)
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.08s
+

@@ -1,0 +1,28 @@
+   Compiling easycopy-client-core v0.1.0 (/Users/zhanghao/myprj/GitHub/EasyCopy/crates/client-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.03s
+     Running unittests src/lib.rs (target/debug/deps/easycopy_client_core-8b25bc77e90d81c8)
+
+running 16 tests
+test archive::tests::rejects_nonportable_names ... ok
+test archive::tests::refuses_impossible_disk_reservation ... ok
+test archive::tests::refuses_source_symlinks_without_touching_target ... ok
+test archive::tests::rejects_link_archive ... ok
+test tests::stale_native_sequence_never_replaces_new_copy ... ok
+test tests::explicit_pairing_copy_is_rejected_before_any_clipboard_or_history_change ... ok
+test archive::tests::rejects_parent_aliases_even_without_directory_entries ... ok
+test tests::delayed_credential_result_cannot_replace_new_settings ... ok
+sandbox_extension_consume failed: 1 (Operation not permitted)
+sandbox_extension_consume failed: 1 (Operation not permitted)
+sandbox_extension_consume failed: 1 (Operation not permitted)
+sandbox_extension_consume failed: 1 (Operation not permitted)
+test clipboard::macos::tests::file_reference_tracks_rename ... ok
+test archive::tests::nested_and_empty_directories_round_trip ... ok
+test clipboard::macos::tests::ordinary_file_url_preserves_escaped_name ... ok
+test clipboard::macos::tests::deleted_file_reference_is_rejected ... ok
+test clipboard::macos::tests::file_references_resolve_before_archive ... ok
+test tests::restart_recovers_offline_capture_without_replaying_it ... ok
+test tests::blocked_system_credentials_leave_local_copy_and_history_usable ... ok
+test tests::native_pairing_strings_never_enter_history_or_registration_queue ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.26s
+

@@ -1,0 +1,19 @@
+{
+  "item_id": "7b47e1da-573b-4846-abf2-acce487f66b0",
+  "status": "complete",
+  "pending_upload": false,
+  "preview": "Finder 中文 #百分号%;.txt、Finder 引用目录",
+  "nested_empty_directory": true,
+  "files": [
+    {
+      "relative_path": "Finder 中文 #百分号%;.txt",
+      "source_sha256": "0be213af2d456a58bea176ef3df46fd01e83ccaafa6c49c466ddec42d10286c6",
+      "cache_sha256": "0be213af2d456a58bea176ef3df46fd01e83ccaafa6c49c466ddec42d10286c6"
+    },
+    {
+      "relative_path": "Finder 引用目录/嵌套/内容.txt",
+      "source_sha256": "ab164c2f628436694232413221567c79e97c908cf218bab4fd3efc912433e9a5",
+      "cache_sha256": "ab164c2f628436694232413221567c79e97c908cf218bab4fd3efc912433e9a5"
+    }
+  ]
+}

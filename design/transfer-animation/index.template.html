@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>EasyCopy · 传输动画预览</title>
+  <style>/* INLINE_STYLES */</style>
+</head>
+<body>
+  <main>
+    <header>
+      <div class="eyebrow">EasyCopy <span>/ 动效预览</span></div>
+      <h1>传输有进度，完成有停留。</h1>
+      <p class="intro">上传从下往上填充，下载从上往下填充。瞬间完成时，图标也至少停留 <strong>300 ms</strong>。</p>
+    </header>
+
+    <section class="toolbar" aria-label="动画预览控制">
+      <div class="presets" role="group" aria-label="模拟传输耗时">
+        <button type="button" data-duration="0" aria-pressed="false">瞬间完成 <span>0 ms</span></button>
+        <button type="button" data-duration="1200" aria-pressed="true">普通传输 <span>1.2 s</span></button>
+        <button type="button" data-duration="4000" aria-pressed="false">大文件 <span>4 s</span></button>
+      </div>
+      <button class="primary" id="play-both" type="button" disabled>播放两端动画</button>
+    </section>
+
+    <section class="showcase" aria-label="上传和下载动画">
+      <article class="demo" data-direction="upload" data-phase="loading">
+        <div class="demo-heading"><div><h2>发送端</h2><p>本机 → 中转服务器</p></div><button class="replay" type="button" aria-label="重播上传动画" disabled>重播</button></div>
+        <div class="stage"><canvas id="upload-icon" role="img" aria-label="上传进度图标"></canvas></div>
+        <div class="demo-footer"><span class="status" aria-live="polite">准备图标</span><span class="timing"></span></div>
+      </article>
+      <article class="demo" data-direction="download" data-phase="loading">
+        <div class="demo-heading"><div><h2>接收端</h2><p>中转服务器 → 本机</p></div><button class="replay" type="button" aria-label="重播下载动画" disabled>重播</button></div>
+        <div class="stage"><canvas id="download-icon" role="img" aria-label="下载进度图标"></canvas></div>
+        <div class="demo-footer"><span class="status" aria-live="polite">准备图标</span><span class="timing"></span></div>
+      </article>
+    </section>
+
+    <section class="fine-controls" aria-label="预览选项">
+      <label class="loop-label"><input type="checkbox" id="loop">循环播放</label>
+      <label class="size-label">图标大小<select id="icon-size" aria-label="图标大小"><option value="64">小 · 64 px</option><option value="96" selected>中 · 96 px</option><option value="144">大 · 144 px</option></select></label>
+      <label class="scrub-label">定格查看<input type="range" id="scrub" aria-label="定格查看填充进度" min="0" max="100" value="50"></label>
+    </section>
+
+    <aside class="behavior-note"><span class="note-label">本次演示</span><p id="explanation">传输 1.2 秒，完成后用 140 ms 淡出。</p><p class="quiet">图标本身没有文字。下方状态和这些按钮仅用于检查动画，传输由本地演示模拟。</p></aside>
+    <div id="error" role="alert" hidden></div>
+    <section id="comparison" hidden><h2>图标对照 · 定格在一半进度</h2><img id="reference" src="__REFERENCE_DATA_URI__" alt="已确认的明亮配色上传和下载图标"></section>
+  </main>
+  <img id="sprite" src="__SPRITE_DATA_URI__" alt="" hidden>
+  <script>/* INLINE_SCRIPT */</script>
+</body>
+</html>

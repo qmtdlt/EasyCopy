@@ -1,0 +1,18 @@
+[
+  {
+    "completion": "4004.20",
+    "direction": "upload",
+    "elapsed": "4145.80",
+    "fadeStart": "4004.20",
+    "opacity": "0.0000",
+    "phase": "hidden"
+  },
+  {
+    "completion": "4004.20",
+    "direction": "download",
+    "elapsed": "4145.80",
+    "fadeStart": "4004.20",
+    "opacity": "0.0000",
+    "phase": "hidden"
+  }
+]

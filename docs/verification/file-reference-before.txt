@@ -1,0 +1,53 @@
+   Compiling ring v0.17.14
+   Compiling rustls v0.23.46
+   Compiling rustls-webpki v0.103.16
+   Compiling tokio-rustls v0.26.6
+   Compiling tungstenite v0.28.0
+   Compiling hyper-rustls v0.27.10
+   Compiling reqwest v0.12.28
+   Compiling tokio-tungstenite v0.28.0
+   Compiling easycopy-client-core v0.1.0 (/Users/zhanghao/myprj/GitHub/EasyCopy/crates/client-core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 9.04s
+     Running unittests src/lib.rs (target/debug/deps/easycopy_client_core-8b25bc77e90d81c8)
+
+running 4 tests
+sandbox_extension_consume failed: 1 (Operation not permitted)
+sandbox_extension_consume failed: 1 (Operation not permitted)
+sandbox_extension_consume failed: 1 (Operation not permitted)
+sandbox_extension_consume failed: 1 (Operation not permitted)
+test clipboard::macos::tests::file_reference_tracks_rename ... FAILED
+test clipboard::macos::tests::ordinary_file_url_preserves_escaped_name ... ok
+test clipboard::macos::tests::file_references_resolve_before_archive ... FAILED
+test clipboard::macos::tests::deleted_file_reference_is_rejected ... FAILED
+
+failures:
+
+---- clipboard::macos::tests::file_reference_tracks_rename stdout ----
+
+thread 'clipboard::macos::tests::file_reference_tracks_rename' (26897158) panicked at crates/client-core/src/clipboard/macos.rs:202:13:
+assertion `left == right` failed
+  left: ["/.file/id=6571367.83437611"]
+ right: ["/private/var/folders/5f/sjs_hw39453fwbs7bscblntm0000gn/T/.tmpjIvzb9/新名称.txt"]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- clipboard::macos::tests::file_references_resolve_before_archive stdout ----
+
+thread 'clipboard::macos::tests::file_references_resolve_before_archive' (26897159) panicked at crates/client-core/src/clipboard/macos.rs:180:13:
+assertion `left == right` failed
+  left: ["/.file/id=6571367.83437610/", "/.file/id=6571367.83437617"]
+ right: ["/private/var/folders/5f/sjs_hw39453fwbs7bscblntm0000gn/T/.tmpVClJf4/目录 空格", "/private/var/folders/5f/sjs_hw39453fwbs7bscblntm0000gn/T/.tmpVClJf4/中文 #百分号%;.txt"]
+
+---- clipboard::macos::tests::deleted_file_reference_is_rejected stdout ----
+
+thread 'clipboard::macos::tests::deleted_file_reference_is_rejected' (26897157) panicked at crates/client-core/src/clipboard/macos.rs:228:13:
+assertion failed: read_urls(&[reference]).is_err()
+
+
+failures:
+    clipboard::macos::tests::deleted_file_reference_is_rejected
+    clipboard::macos::tests::file_reference_tracks_rename
+    clipboard::macos::tests::file_references_resolve_before_archive
+
+test result: FAILED. 1 passed; 3 failed; 0 ignored; 0 measured; 12 filtered out; finished in 0.13s
+
+error: test failed, to rerun pass `-p easycopy-client-core --lib`

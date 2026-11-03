@@ -1,0 +1,23 @@
+[package]
+name = "easycopy-integration-tests"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dev-dependencies]
+easycopy-protocol = { path = "../protocol" }
+easycopy-client-core = { path = "../client-core" }
+easycopy-relay = { path = "../relay" }
+anyhow.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+tempfile.workspace = true
+serde_json.workspace = true
+reqwest.workspace = true
+axum-server.workspace = true
+axum.workspace = true
+rustls.workspace = true
+sha2.workspace = true
+hex.workspace = true
+image.workspace = true
+futures-util.workspace = true

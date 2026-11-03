@@ -1,0 +1,12 @@
+{
+  "environment": "Chrome headless, 1000x700, mock Tauri bridge only",
+  "results": [
+    "history fixture and hover actions",
+    "copy command arguments",
+    "type filter",
+    "settings visibility and save preserves stored key",
+    "upload/download mirrored rendering",
+    "failure state and hide callback"
+  ],
+  "consoleExceptions": []
+}

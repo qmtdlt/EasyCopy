@@ -1,0 +1,2 @@
+    Checking windows-clipboard-check v0.0.0 (/Users/zhanghao/myprj/GitHub/EasyCopy/.local/windows-clipboard-check)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.47s

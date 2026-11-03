@@ -1,0 +1,69 @@
+
+added 53 packages in 1s
+
+8 packages are looking for funding
+  run `npm fund` for details
+
+> easycopy-desktop@0.1.0 tauri
+> tauri build --debug --bundles app
+
+        Info `tauri-build` dependency has workspace inheritance enabled. The features array won't be automatically rewritten. Expected features: []
+        Info `tauri` dependency has workspace inheritance enabled. The features array won't be automatically rewritten. Expected features: [macos-private-api]
+        Info Looking up installed tauri packages to check mismatched versions...
+     Running beforeBuildCommand `npm run build`
+
+> easycopy-desktop@0.1.0 build
+> vue-tsc --noEmit && vite build
+
+vite v7.3.7 building client environment for production...
+transforming...
+✓ 21 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                  0.44 kB │ gzip:  0.29 kB
+dist/assets/index-XlCyR_9o.css   8.82 kB │ gzip:  2.83 kB
+dist/assets/index-BJuc7LIN.js   87.45 kB │ gzip: 34.67 kB │ map: 656.63 kB
+✓ built in 509ms
+    Blocking waiting for file lock on build directory
+   Compiling objc2-exception-helper v0.1.1
+   Compiling ring v0.17.14
+   Compiling objc2 v0.6.5
+   Compiling objc2-foundation v0.3.2
+   Compiling wry v0.57.1
+   Compiling objc2-core-foundation v0.3.2
+   Compiling block2 v0.6.2
+   Compiling dispatch2 v0.3.1
+   Compiling objc2-core-text v0.3.2
+   Compiling objc2-core-graphics v0.3.2
+   Compiling objc2-core-video v0.3.2
+   Compiling rustls v0.23.46
+   Compiling rustls-webpki v0.103.16
+   Compiling tokio-rustls v0.26.6
+   Compiling tungstenite v0.28.0
+   Compiling hyper-rustls v0.27.10
+   Compiling reqwest v0.12.28
+   Compiling tokio-tungstenite v0.28.0
+   Compiling objc2-core-data v0.3.2
+   Compiling objc2-quartz-core v0.3.2
+   Compiling objc2-cloud-kit v0.3.2
+   Compiling objc2-core-image v0.3.2
+   Compiling objc2-app-kit v0.3.2
+   Compiling objc2-web-kit v0.3.2
+   Compiling tao v0.37.2
+   Compiling muda v0.20.0
+   Compiling window-vibrancy v0.8.1
+   Compiling rfd v0.17.2
+   Compiling easycopy-client-core v0.1.0 (/Users/zhanghao/myprj/GitHub/EasyCopy/crates/client-core)
+   Compiling tauri-runtime v2.12.2
+   Compiling tray-icon v0.25.1
+   Compiling tauri-runtime-wry v2.12.3
+   Compiling tauri v2.12.5
+   Compiling tauri-plugin-fs v2.7.1
+   Compiling tauri-plugin-dialog v2.8.4
+   Compiling easycopy-desktop v0.1.0 (/Users/zhanghao/myprj/GitHub/EasyCopy/apps/desktop/src-tauri)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 54.03s
+       Built application at: /Users/zhanghao/myprj/GitHub/EasyCopy/target/debug/EasyCopy
+    Bundling EasyCopy.app (/Users/zhanghao/myprj/GitHub/EasyCopy/target/debug/bundle/macos/EasyCopy.app)
+    Finished 1 bundle at:
+        /Users/zhanghao/myprj/GitHub/EasyCopy/target/debug/bundle/macos/EasyCopy.app (62.95 MiB)
+

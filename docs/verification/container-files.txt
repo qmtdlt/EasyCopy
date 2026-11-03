@@ -1,0 +1,3 @@
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.54s
+     Running `target/debug/examples/send_fixture .local/container-pairing.txt 58444 files .local/container-fixtures`
+fixture complete: Files, id=96d07cb2-4f7c-4d51-896f-4935a957b12c, bytes=5120

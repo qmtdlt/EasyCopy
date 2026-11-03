@@ -1,0 +1,17 @@
+{
+  "date": "2026-11-03",
+  "timezone": "Asia/Shanghai",
+  "test_counts": {
+    "rust_protocol_core_relay_integration": 26,
+    "desktop_overlay": 2,
+    "frontend_animation": 9,
+    "mac_native_clipboard": 1
+  },
+  "total_passed": 38,
+  "mac_client_built_and_launched": true,
+  "linux_container_healthy": true,
+  "finder_paste_hashes_verified": true,
+  "windows_full_app_runtime": "not tested",
+  "wechat": "skipped by user",
+  "native_overlay_multi_display_fullscreen": "pending"
+}

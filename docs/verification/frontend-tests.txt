@@ -1,0 +1,68 @@
+
+> easycopy-desktop@0.1.0 test
+> node --test tests/*.test.mjs
+
+TAP version 13
+# Subtest: instant complete stays 300ms from its first rendered frame, then fades for 140ms
+ok 1 - instant complete stays 300ms from its first rendered frame, then fades for 140ms
+  ---
+  duration_ms: 1.557292
+  type: 'test'
+  ...
+# Subtest: long transfers fade immediately on verified completion without another 300ms hold
+ok 2 - long transfers fade immediately on verified completion without another 300ms hold
+  ---
+  duration_ms: 0.175208
+  type: 'test'
+  ...
+# Subtest: preparing and verification never manufacture received byte progress or completion
+ok 3 - preparing and verification never manufacture received byte progress or completion
+  ---
+  duration_ms: 0.134334
+  type: 'test'
+  ...
+# Subtest: failed transfer keeps actual progress and does not become success
+ok 4 - failed transfer keeps actual progress and does not become success
+  ---
+  duration_ms: 0.188583
+  type: 'test'
+  ...
+# Subtest: new task invalidates old callbacks and all subsequent old task events
+ok 5 - new task invalidates old callbacks and all subsequent old task events
+  ---
+  duration_ms: 0.325125
+  type: 'test'
+  ...
+# Subtest: unknown late progress cannot supersede an active task
+ok 6 - unknown late progress cannot supersede an active task
+  ---
+  duration_ms: 0.057084
+  type: 'test'
+  ...
+# Subtest: duplicate start does not reset visible timer or transmitted bytes
+ok 7 - duplicate start does not reset visible timer or transmitted bytes
+  ---
+  duration_ms: 0.121375
+  type: 'test'
+  ...
+# Subtest: reduced motion still holds for minimum visible time
+ok 8 - reduced motion still holds for minimum visible time
+  ---
+  duration_ms: 0.120583
+  type: 'test'
+  ...
+# Subtest: teardown cancels rendering and completion callbacks
+ok 9 - teardown cancels rendering and completion callbacks
+  ---
+  duration_ms: 0.291375
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 53.856208

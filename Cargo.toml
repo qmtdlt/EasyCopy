@@ -1,0 +1,56 @@
+[workspace]
+members = ["crates/protocol", "crates/client-core", "crates/relay", "crates/integration-tests", "apps/desktop/src-tauri"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+anyhow = "1"
+async-trait = "0.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["io"] }
+futures-util = "0.3"
+bytes = "1"
+sha2 = "0.10"
+hex = "0.4"
+base64 = "0.22"
+fs2 = "0.4"
+tar = "0.4"
+walkdir = "2"
+image = { version = "0.25", default-features = false, features = ["png", "tiff"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+tokio-tungstenite = { version = "0.28", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-pemfile = "2"
+axum = { version = "0.8", features = ["ws"] }
+axum-server = { version = "0.7", features = ["tls-rustls"] }
+rusqlite = { version = "0.37", features = ["bundled"] }
+rcgen = { version = "0.13", features = ["pem", "x509-parser"] }
+rand = "0.8"
+subtle = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tempfile = "3"
+keyring = { version = "3", features = ["apple-native", "windows-native"] }
+hostname = "0.4"
+url = "2"
+unicode-normalization = "0.1"
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", features = ["NSArray", "NSData", "NSString", "NSURL", "NSGeometry", "NSThread"] }
+objc2-app-kit = { version = "0.3", features = ["NSPasteboard", "NSPasteboardItem", "NSImage", "NSBitmapImageRep", "NSScreen", "NSEvent", "NSWindow", "NSResponder"] }
+windows = { version = "0.61", features = ["Win32_Foundation", "Win32_System_DataExchange", "Win32_System_Memory", "Win32_UI_WindowsAndMessaging", "Win32_UI_Shell", "Win32_Graphics_Gdi", "Win32_System_LibraryLoader", "Win32_UI_HiDpi"] }
+tauri = { version = "2", features = ["tray-icon", "macos-private-api"] }
+tauri-build = "2"
+tauri-plugin-dialog = "2"
+
+[profile.release]
+lto = "thin"
+strip = true
+
