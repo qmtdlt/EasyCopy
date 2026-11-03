@@ -1,0 +1,7 @@
+# Ubuntu 22.04 with Snap Docker: no-new-privileges prevents AppArmor's
+# snap.docker.dockerd -> docker-default exec transition (EPERM).
+# Apply only on this affected host. Keep Docker's default AppArmor/seccomp,
+# non-root image user, cap_drop: ALL and read_only from compose.yaml.
+services:
+  relay:
+    security_opt: !override []

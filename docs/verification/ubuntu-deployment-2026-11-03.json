@@ -1,0 +1,37 @@
+{
+  "server_id": "5761ead8-ce12-4b98-86ae-df4484654fef",
+  "item_id": "3ef243c8-d7c2-4154-b454-fbbc78b42d16",
+  "bytes": 55,
+  "sha256": "c6ae9a0e67394e1883f7f11fba213ea196283062507502a05cc41fc2b87cdf6b",
+  "date": "2026-11-03",
+  "timezone": "Asia/Shanghai",
+  "host": "192.168.1.48",
+  "port": 8443,
+  "container": "easycopy-relay-1",
+  "health": "healthy",
+  "architecture": "linux/amd64",
+  "image": "sha256:4d65b50d0b5cf634d7309946cf2c4726f5bfb52540adcd1a9851b2ae6426b177",
+  "image_archive_sha256": "f621cde2f414d3aa4728a0432d8bdbe55d60a9379a0661d2c93729bc6d8d74eb",
+  "passed": [
+    "LAN TLS CA and hostname verification",
+    "server identity validation",
+    "authenticated HTTP 200",
+    "unauthenticated HTTP 401",
+    "WSS snapshot",
+    "register and upload",
+    "WSS completed event",
+    "download bytes and SHA-256",
+    "identity and payload preserved after container recreation",
+    "container healthcheck"
+  ],
+  "runtime_security": {
+    "uid": 10001,
+    "gid": 10001,
+    "apparmor": "docker-default",
+    "seccomp": 2,
+    "effective_capabilities": 0,
+    "read_only_rootfs": true,
+    "no_new_privileges": false
+  },
+  "limitation": "Snap Docker requires the host-specific compose.snap.yaml override; no full desktop or Windows acceptance test"
+}

@@ -12,6 +12,8 @@ Mac 与 Windows 双向剪贴板同步。Rust 核心与 Linux 中转服务，Taur
 
 该脚本构建并打开 `target/debug/bundle/macos/EasyCopy.app`。支持 `--verify`、`--debug`、`--logs`。Codex 的 Run 按钮也调用此脚本。关闭窗口后仍继续同步；从菜单栏托盘打开或退出。
 
+Mac 运行脚本会为整个应用包签名，优先使用钥匙串中唯一的 Apple Development 证书；可通过 `EASYCOPY_SIGNING_IDENTITY` 指定证书名称或指纹。无唯一开发证书时退回完整临时签名并提示，局域网权限识别不保证同样稳定。应用包含局域网用途说明；首次出现系统询问时允许 EasyCopy 连接本地网络。
+
 开发构建重新签名后，macOS 可能要求重新允许读取钥匙串。请在系统弹窗中处理；等待授权期间窗口、本地复制与历史仍可用。`--acceptance` 使用 `.local/desktop-acceptance` 隔离验收配置，不读取普通配置的凭据。
 
 开发模式：
@@ -26,7 +28,9 @@ npm run tauri -- dev
 
 ## 服务端
 
-在 Linux Docker 主机上执行（本项目不会自动部署到远程电脑）：
+`192.168.1.48` 的离线部署、客户端配对及维护步骤见 [Ubuntu 部署记录](docs/Ubuntu部署记录.md)。
+
+以下为可访问镜像仓库的 Linux Docker 主机上的常规构建方式：
 
 ```sh
 docker compose -f deploy/compose.yaml up -d --build

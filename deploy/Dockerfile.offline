@@ -1,0 +1,12 @@
+# Build context: a statically linked Linux easycopy-relay binary and an empty
+# data/ directory (mode 0700). No registry or package downloads are required.
+FROM scratch
+COPY easycopy-relay /usr/local/bin/easycopy-relay
+COPY --chown=10001:10001 data/ /data/
+USER 10001:10001
+ENV PATH=/usr/local/bin EASYCOPY_DATA=/data EASYCOPY_BIND=0.0.0.0:8443
+VOLUME ["/data"]
+EXPOSE 8443
+HEALTHCHECK --interval=30s --timeout=8s --start-period=10s --retries=3 CMD ["/usr/local/bin/easycopy-relay", "healthcheck"]
+ENTRYPOINT ["/usr/local/bin/easycopy-relay"]
+CMD ["serve"]

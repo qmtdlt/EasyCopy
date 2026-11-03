@@ -42,7 +42,7 @@ async fn test_connection(
         .core
         .test_connection(input)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| format!("{e:#}"))
 }
 #[tauri::command]
 async fn save_settings(
@@ -53,7 +53,7 @@ async fn save_settings(
         .core
         .save_settings(input)
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| format!("{e:#}"))
 }
 #[tauri::command]
 async fn copy_item(state: tauri::State<'_, DesktopState>, id: String) -> Result<(), String> {
