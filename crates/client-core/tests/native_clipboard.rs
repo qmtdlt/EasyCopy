@@ -16,6 +16,11 @@ fn native_text_transparent_png_files_and_sequence_guard() -> Result<()> {
         last_written = clipboard
             .write_if_sequence(&text, last_written)?
             .context("剪贴板被外部修改")?;
+        assert_eq!(
+            clipboard.sequence()?,
+            last_written,
+            "写文本返回的序号必须是关闭剪贴板后的实际序号"
+        );
         assert_eq!(clipboard.read()?, Some(text));
         assert!(clipboard
             .write_if_sequence(
@@ -32,6 +37,11 @@ fn native_text_transparent_png_files_and_sequence_guard() -> Result<()> {
         last_written = clipboard
             .write_if_sequence(&ClipboardContent::Image(encoded.into_inner()), last_written)?
             .context("剪贴板被外部修改")?;
+        assert_eq!(
+            clipboard.sequence()?,
+            last_written,
+            "写图片返回的序号必须保持有效"
+        );
         let Some(ClipboardContent::Image(png)) = clipboard.read()? else {
             anyhow::bail!("原生图片格式读回失败");
         };
@@ -47,6 +57,11 @@ fn native_text_transparent_png_files_and_sequence_guard() -> Result<()> {
         last_written = clipboard
             .write_if_sequence(&ClipboardContent::Files(paths.clone()), last_written)?
             .context("剪贴板被外部修改")?;
+        assert_eq!(
+            clipboard.sequence()?,
+            last_written,
+            "写文件返回的序号必须保持有效"
+        );
         assert_eq!(clipboard.read()?, Some(ClipboardContent::Files(paths)));
         assert!(temp.path().join("项目/嵌套/空目录").is_dir());
         Ok(())

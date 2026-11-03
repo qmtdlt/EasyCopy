@@ -49,9 +49,23 @@ cargo run --locked -p easycopy-relay -- serve --data-dir .local/relay --bind 127
 cargo run --locked -p easycopy-relay -- pairing --data-dir .local/relay
 ```
 
-## Windows 构建
+## Windows 运行与构建
 
-安装 Rust stable（MSVC 工具链）、Visual Studio C++ Build Tools、WebView2 Runtime 和 Node.js 22+。在 Windows PowerShell 中：
+需要 Rust stable（MSVC 工具链）、Visual Studio C++ Build Tools（含 C++ x64 工具和 Windows SDK）、WebView2 Runtime 和 Node.js 22+。
+
+双击仓库根目录的 `Start-EasyCopy.cmd`。首次自动安装 npm 依赖、构建并启动真正的桌面客户端；之后直接打开 `.local/windows-client/EasyCopy.exe`，不依赖 Vite 或终端常驻。关闭主窗口后仍在后台运行，从系统托盘菜单打开或退出。若已在运行，脚本提示使用托盘，不重复启动。
+
+更新代码后，在仓库根目录重新构建（先从托盘退出客户端）：
+
+```powershell
+.\Start-EasyCopy.cmd -Build
+```
+
+开发热更新用 `.\Start-EasyCopy.cmd -Dev`；隔离验收用 `.\Start-EasyCopy.cmd -Acceptance`（配置位于 `.local/windows-acceptance`）。普通配置和历史位于 `%APPDATA%\com.easycopy.desktop`，连接密钥保存在 Windows 系统凭据中。不要手工把 `target/debug/EasyCopy.exe` 当作固定入口：开发模式也会覆盖这个文件，它可能需要 Vite。
+
+连接时需填写 Windows 能访问的中转服务器 IP/域名、实际暴露端口和完整配对串。Mac 验收使用的 `127.0.0.1:58444` 是 Mac 本机地址，不能直接用于 Windows。配对串只在应用设置中输入。
+
+如需生成安装包，在 Windows PowerShell 中：
 
 ```powershell
 cd apps/desktop

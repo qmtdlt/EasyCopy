@@ -202,7 +202,7 @@ pub fn run() {
                 }),
                 overlay: Mutex::new(overlay::OverlayState::default()),
             });
-            let mut main = tauri::WebviewWindowBuilder::new(
+            let main = tauri::WebviewWindowBuilder::new(
                 app,
                 "main",
                 tauri::WebviewUrl::App("index.html".into()),
@@ -212,11 +212,9 @@ pub fn run() {
             .min_inner_size(760.0, 540.0)
             .center();
             #[cfg(target_os = "macos")]
-            {
-                main = main
-                    .title_bar_style(tauri::TitleBarStyle::Overlay)
-                    .hidden_title(true);
-            }
+            let main = main
+                .title_bar_style(tauri::TitleBarStyle::Overlay)
+                .hidden_title(true);
             main.build()?;
             overlay::create(app)?;
             let open =
