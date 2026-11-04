@@ -517,6 +517,12 @@ impl ClientCore {
         }
         result?
     }
+    pub fn preview_image(&self, id: Uuid) -> Result<Vec<u8>> {
+        match self.content(id)? {
+            ClipboardContent::Image(bytes) => Ok(bytes),
+            _ => bail!("该记录不是图片"),
+        }
+    }
     fn content(&self, id: Uuid) -> Result<ClipboardContent> {
         let record = self
             .state

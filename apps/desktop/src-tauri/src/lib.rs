@@ -28,6 +28,19 @@ fn list_history(state: tauri::State<'_, DesktopState>) -> Vec<HistoryEntry> {
     state.core.history()
 }
 #[tauri::command]
+async fn preview_image(
+    state: tauri::State<'_, DesktopState>,
+    id: String,
+) -> Result<tauri::ipc::Response, String> {
+    let id = Uuid::parse_str(&id).map_err(|_| "无效记录身份")?;
+    let core = state.core.clone();
+    let bytes = tauri::async_runtime::spawn_blocking(move || core.preview_image(id))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+#[tauri::command]
 fn get_file_upload_prompt(state: tauri::State<'_, DesktopState>) -> Option<FileUploadPrompt> {
     state.core.file_upload_prompt()
 }
@@ -207,6 +220,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             list_history,
+            preview_image,
             get_file_upload_prompt,
             get_file_upload_threshold,
             set_file_upload_threshold,

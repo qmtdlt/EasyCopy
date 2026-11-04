@@ -8,6 +8,19 @@ import AutostartSetting from './components/AutostartSetting.vue'
 import FileUploadConfirmation from './components/FileUploadConfirmation.vue'
 import FileUploadSetting from './components/FileUploadSetting.vue'
 
+const previewUrl = ref('')
+let previewRequest = 0
+function closePreview() { previewRequest++; if (previewUrl.value) URL.revokeObjectURL(previewUrl.value); previewUrl.value = '' }
+async function openPreview(item: HistoryEntry) {
+  if (!item.available) return
+  closePreview()
+  const request = previewRequest
+  try {
+    const data = await api.previewImage(item.id)
+    if (request === previewRequest) previewUrl.value = URL.createObjectURL(new Blob([data], { type: 'image/png' }))
+  } catch (error) { if (request === previewRequest) showNotice(errorText(error), true) }
+}
+function previewKey(event: KeyboardEvent) { if (event.key === 'Escape') closePreview() }
 const windowExpanded = ref(false)
 const page = ref<'history' | 'settings'>('history')
 const filter = ref<'all' | ContentKind>('all')
@@ -81,6 +94,7 @@ async function act(item: HistoryEntry, action: 'copy' | 'save') {
 }
 
 onMounted(async () => {
+  window.addEventListener('keydown', previewKey)
   try {
     stopEvents = await events({
       history: entries => { historyRevision++; history.value = entries },
@@ -105,7 +119,7 @@ onMounted(async () => {
   } catch (error) { showNotice(errorText(error), true) }
   finally { loading.value = false }
 })
-onBeforeUnmount(() => { destroyed = true; stopEvents?.(); if (noticeTimer) clearTimeout(noticeTimer) })
+onBeforeUnmount(() => { destroyed = true; window.removeEventListener('keydown', previewKey); closePreview(); stopEvents?.(); if (noticeTimer) clearTimeout(noticeTimer) })
 </script>
 
 <template>
@@ -139,7 +153,7 @@ onBeforeUnmount(() => { destroyed = true; stopEvents?.(); if (noticeTimer) clear
             <div class="item-icon"><Icon :name="item.kind" :size="25" /></div>
             <div class="item-origin"><time :datetime="new Date(item.createdAt).toISOString()" :title="exactTime(item.createdAt)">{{ clock(item.createdAt) }}</time><span :title="item.deviceName">{{ item.deviceName }}</span></div>
             <div class="item-body">
-              <img v-if="item.kind === 'image' && item.thumbnail" class="thumbnail" :src="item.thumbnail" alt="剪贴板图片缩略图" />
+              <button v-if="item.kind === 'image' && item.thumbnail" class="thumbnail-button" :disabled="!available(item)" aria-label="放大预览图片" @click="openPreview(item)"><img class="thumbnail" :src="item.thumbnail" alt="剪贴板图片缩略图" /></button>
               <div class="item-description"><p :title="item.preview">{{ item.preview || (item.kind === 'image' ? '图片' : item.kind === 'files' ? '文件' : '空文本') }}</p><span :class="{ 'error-text': !!item.error }" :title="item.error || item.detail">{{ statusText(item) || item.detail || (item.kind === 'text' ? '文本' : '') }}</span></div>
             </div>
             <div class="item-actions">
@@ -174,6 +188,10 @@ onBeforeUnmount(() => { destroyed = true; stopEvents?.(); if (noticeTimer) clear
       </section>
     </main>
     <div v-if="notice" class="toast" :class="{ 'toast-error': noticeError }" role="status"><Icon :name="noticeError ? 'alert' : 'check'" :size="18" /><span>{{ notice }}</span><button aria-label="关闭提示" @click="notice = ''"><Icon name="close" :size="16" /></button></div>
+    <div v-if="previewUrl" class="image-preview" role="dialog" aria-modal="true" aria-label="图片预览" @click.self="closePreview">
+      <button class="preview-close" aria-label="关闭图片预览" @click="closePreview"><Icon name="close" :size="24" /></button>
+      <img :src="previewUrl" alt="剪贴板图片预览" />
+    </div>
     <FileUploadConfirmation />
   </div>
 </template>

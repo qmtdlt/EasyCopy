@@ -7,6 +7,7 @@ export interface FileUploadPrompt { id: string; bytes: number; thresholdMb: numb
 const noNative = () => Promise.reject(new Error('请在 EasyCopy 桌面客户端中使用此功能。'))
 
 export const api = {
+  previewImage: (id: string): Promise<ArrayBuffer> => native ? invoke('preview_image', { id }) : noNative(),
   history: (): Promise<HistoryEntry[]> => native ? invoke('list_history') : Promise.resolve([]),
   settings: (): Promise<PublicSettings> => native ? invoke('get_settings') : Promise.resolve({ address: '', port: 8443, hasPairingKey: false }),
   autostart: (): Promise<AutostartStatus> => native ? invoke('get_autostart') : noNative(),
