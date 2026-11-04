@@ -809,7 +809,6 @@ impl ClientCore {
     }
     pub(super) fn cleanup(&self) -> Result<()> {
         let mut state = self.state.lock().unwrap();
-        let now = chrono::Utc::now().timestamp_millis();
         let mut protected: HashSet<_> = state.saved.history.iter().copied().collect();
         protected.extend(state.saved.current);
         protected.extend(&state.in_flight);
@@ -831,7 +830,8 @@ impl ClientCore {
             }
         }
         // On restart protect every native file reference before considering GC.
-        if let Ok(Some(ClipboardContent::Files(paths))) = self.clipboard.read() {
+        let clipboard = self.clipboard.read();
+        if let Ok(Some(ClipboardContent::Files(paths))) = &clipboard {
             for (id, record) in &state.saved.records {
                 if record
                     .files
@@ -847,10 +847,7 @@ impl ClientCore {
             if protected.contains(id) || record.pending_upload {
                 record.unreferenced_at = None;
             } else {
-                let since = record.unreferenced_at.get_or_insert(now);
-                if now - *since >= 24 * 60 * 60 * 1000 {
-                    remove.push(*id);
-                }
+                remove.push(*id);
             }
         }
         for id in remove {
@@ -859,6 +856,28 @@ impl ClientCore {
                 std::fs::remove_dir_all(path)?;
             }
             state.saved.records.remove(&id);
+        }
+        // Interrupted earlier runs can leave cache directories without a record.
+        // Restrict cleanup to real directories named like our record IDs.
+        for entry in std::fs::read_dir(self.directory.join("cache"))? {
+            let entry = entry?;
+            if !entry.file_type()?.is_dir() {
+                continue;
+            }
+            let name = entry.file_name();
+            let Some(id) = name.to_str().and_then(|name| Uuid::parse_str(name).ok()) else {
+                continue;
+            };
+            let clipboard_safe = match &clipboard {
+                Ok(Some(ClipboardContent::Files(paths))) => {
+                    !paths.iter().any(|path| path.starts_with(entry.path()))
+                }
+                Ok(_) => true,
+                Err(_) => false,
+            };
+            if clipboard_safe && !state.saved.records.contains_key(&id) {
+                std::fs::remove_dir_all(entry.path())?;
+            }
         }
         drop(state);
         self.persist()

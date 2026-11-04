@@ -672,6 +672,43 @@ impl ClientCore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn cleanup_keeps_recent_history_and_pending_uploads() {
+        let root = tempfile::tempdir().unwrap();
+        let core = ClientCore::open_with_clipboard(
+            root.path().into(),
+            Arc::new(MemoryClipboard::default()),
+        )
+        .unwrap();
+        let mut ids = Vec::new();
+        {
+            let mut state = core.state.lock().unwrap();
+            for n in 0..12 {
+                let id = Uuid::new_v4();
+                core.capture_locked(&mut state, &ClipboardContent::Text(n.to_string()), id);
+                std::fs::create_dir_all(core.payload_path(id).parent().unwrap()).unwrap();
+                ids.push(id);
+            }
+            state.in_flight.clear();
+            state.saved.records.get_mut(&ids[0]).unwrap().pending_upload = true;
+        }
+        let orphan = root.path().join("cache").join(Uuid::new_v4().to_string());
+        std::fs::create_dir_all(&orphan).unwrap();
+        core.cleanup().unwrap();
+        assert!(!orphan.exists());
+        assert!(core.payload_path(ids[0]).parent().unwrap().exists());
+        assert!(!core.payload_path(ids[1]).parent().unwrap().exists());
+        assert!(ids[2..]
+            .iter()
+            .all(|id| core.payload_path(*id).parent().unwrap().exists()));
+        {
+            let mut state = core.state.lock().unwrap();
+            state.saved.records.get_mut(&ids[0]).unwrap().pending_upload = false;
+        }
+        core.cleanup().unwrap();
+        assert!(!core.payload_path(ids[0]).parent().unwrap().exists());
+        assert_eq!(core.state.lock().unwrap().saved.records.len(), 10);
+    }
     #[tokio::test]
     async fn restart_recovers_offline_capture_without_replaying_it() {
         let root = tempfile::tempdir().unwrap();
