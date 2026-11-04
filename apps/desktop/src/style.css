@@ -1,4 +1,4 @@
-:root { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif; font-synthesis: none; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; color: #f4f2ef; background: #262423; color-scheme: dark; --muted: #bcb7b2; --line: #484340; }
+:root { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif; font-synthesis: none; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; color: #f4f2ef; background: transparent; color-scheme: normal; --muted: #bcb7b2; --line: #484340; }
 * { box-sizing: border-box; }
 html, body, #app { margin: 0; width: 100%; height: 100%; overflow: hidden; }
 button, input { font: inherit; }
@@ -8,7 +8,8 @@ button, input { -webkit-tap-highlight-color: transparent; }
 button:focus-visible, input:focus-visible, .history-row:focus-visible { outline: 2px solid #b7cfd3; outline-offset: 3px; }
 button { user-select: none; }
 svg { flex: 0 0 auto; }
-.app-shell { position: relative; width: 100%; height: 100%; display: flex; padding: 8px; background: radial-gradient(ellipse at 35% 5%, #2e2a28 0%, transparent 65%), #262423; }
+.app-shell { color-scheme: dark; --window-inset: 8px; --sidebar-radius: 21px; position: relative; width: 100%; height: 100%; display: flex; padding: var(--window-inset); border-radius: calc(var(--sidebar-radius) + var(--window-inset)); overflow: hidden; isolation: isolate; background: radial-gradient(ellipse at 35% 5%, #2e2a28 0%, transparent 65%), #262423; }
+.app-shell.window-expanded { border-radius: 0; }
 .titlebar { position: absolute; z-index: 2; top: 0; left: 0; right: 0; height: 38px; display: flex; user-select: none; }
 .titlebar-drag { flex: 1; min-width: 0; }
 .window-controls { display: flex; align-items: flex-start; padding: 4px 8px 0 0; }
@@ -18,7 +19,7 @@ svg { flex: 0 0 auto; }
 .window-control:focus-visible { outline-offset: -3px; }
 .window-close:hover:enabled { background: #b83232; color: #fff; }
 .window-close:active:enabled { background: #962727; }
-.sidebar { flex: 0 0 190px; display: flex; flex-direction: column; padding: 48px 10px 20px; border-radius: 21px; background: linear-gradient(120deg, #383432, #353230 60%, #393633); }
+.sidebar { flex: 0 0 190px; display: flex; flex-direction: column; padding: 48px 10px 20px; border-radius: var(--sidebar-radius); background: linear-gradient(120deg, #383432, #353230 60%, #393633); }
 .brand { display: flex; align-items: center; gap: 10px; margin: 5px 10px 33px; font-size: 22px; font-weight: 650; letter-spacing: -.45px; user-select: none; }
 nav { display: flex; flex-direction: column; gap: 4px; }
 nav button { display: flex; align-items: center; gap: 12px; width: 100%; height: 40px; padding: 0 13px; border-radius: 9px; text-align: left; font-size: 17px; color: #d9d5d1; }

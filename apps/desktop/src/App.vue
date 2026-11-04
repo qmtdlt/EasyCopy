@@ -8,6 +8,7 @@ import AutostartSetting from './components/AutostartSetting.vue'
 import FileUploadConfirmation from './components/FileUploadConfirmation.vue'
 import FileUploadSetting from './components/FileUploadSetting.vue'
 
+const windowExpanded = ref(false)
 const page = ref<'history' | 'settings'>('history')
 const filter = ref<'all' | ContentKind>('all')
 const history = ref<HistoryEntry[]>([])
@@ -108,8 +109,8 @@ onBeforeUnmount(() => { destroyed = true; stopEvents?.(); if (noticeTimer) clear
 </script>
 
 <template>
-  <div class="app-shell">
-    <WindowTitlebar @error="showNotice($event, true)" />
+  <div class="app-shell" :class="{ 'window-expanded': windowExpanded }">
+    <WindowTitlebar @expanded="windowExpanded = $event" @error="showNotice($event, true)" />
     <aside class="sidebar">
       <div class="brand" data-tauri-drag-region><Icon name="copy" :size="29" /><span>EasyCopy</span></div>
       <nav aria-label="主菜单">

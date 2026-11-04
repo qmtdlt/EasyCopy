@@ -4,7 +4,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import { native } from '../bridge'
 import Icon from './Icon.vue'
 
-const emit = defineEmits<{ error: [message: string] }>()
+const emit = defineEmits<{ error: [message: string]; expanded: [value: boolean] }>()
 const appWindow = native ? getCurrentWindow() : undefined
 const maximized = ref(false)
 const pending = ref(false)
@@ -21,8 +21,11 @@ async function refreshMaximized() {
   if (!appWindow) return
   const revision = ++stateRevision
   try {
-    const value = await appWindow.isMaximized()
-    if (!destroyed && revision === stateRevision) maximized.value = value
+    const [value, fullscreen] = await Promise.all([appWindow.isMaximized(), appWindow.isFullscreen()])
+    if (!destroyed && revision === stateRevision) {
+      maximized.value = value
+      emit('expanded', value || fullscreen)
+    }
   } catch (error) { reportError(error) }
 }
 

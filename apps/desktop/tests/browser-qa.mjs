@@ -85,6 +85,7 @@ try {
     window.__qaAutostartError = '';
     window.__qaAutostartReadError = '';
     window.__qaMaximized = false;
+    window.__qaFullscreen = false;
     window.__qaEmit = (event, payload) => { for (const [id, callback] of listeners.get(event) || []) callbacks.get(callback)?.({ event, id, payload }); };
     window.__TAURI_INTERNALS__ = {
       metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
@@ -94,6 +95,7 @@ try {
         window.__qaCalls.push({ cmd, args });
         if (cmd === 'plugin:event|listen') { const id = ++n; const list = listeners.get(args.event) || []; list.push([id,args.handler]); listeners.set(args.event,list); return id; }
         if (cmd === 'plugin:event|unlisten') return;
+        if (cmd === 'plugin:window|is_fullscreen') return window.__qaFullscreen;
         if (cmd === 'plugin:window|is_maximized') return window.__qaMaximized;
         if (cmd === 'plugin:window|toggle_maximize') { window.__qaMaximized = !window.__qaMaximized; return; }
         if (['plugin:window|minimize', 'plugin:window|close', 'plugin:window|start_dragging'].includes(cmd)) return;
@@ -136,14 +138,23 @@ try {
   await send('Page.navigate', { url: process.env.QA_URL || 'http://127.0.0.1:1420/' })
   await waitFor("document.querySelectorAll('.history-row').length === 5")
   await waitFor("window.__qaCalls.some(c => c.cmd === 'plugin:window|is_maximized')")
+  assert.equal(await evaluate("getComputedStyle(document.querySelector('.app-shell')).borderTopLeftRadius"), '29px')
+  assert.equal(await evaluate("getComputedStyle(document.documentElement).backgroundColor"), 'rgba(0, 0, 0, 0)')
+  assert.equal(await evaluate("document.elementFromPoint(0, 0)?.closest('.app-shell') === null"), true)
   await evaluate("document.querySelector('.window-control[aria-label=最大化]').click()")
   await waitFor("document.querySelector('.window-control[aria-label=还原]') !== null")
+  assert.equal(await evaluate("getComputedStyle(document.querySelector('.app-shell')).borderTopLeftRadius"), '0px')
   await evaluate("document.querySelector('.window-control[aria-label=还原]').click()")
   await waitFor("document.querySelector('.window-control[aria-label=最大化]') !== null")
   await evaluate("document.querySelector('.window-control[aria-label=最小化]').click()")
   await waitFor("window.__qaCalls.some(c => c.cmd === 'plugin:window|minimize') && !document.querySelector('.window-close').disabled")
   await evaluate("document.querySelector('.window-close').click()")
   await waitFor("window.__qaCalls.some(c => c.cmd === 'plugin:window|close')")
+  assert.equal(await evaluate("getComputedStyle(document.querySelector('.app-shell')).borderTopLeftRadius"), '29px')
+  await evaluate("window.__qaFullscreen = true; window.__qaEmit('tauri://resize', {width:1000,height:700})")
+  await waitFor("getComputedStyle(document.querySelector('.app-shell')).borderTopLeftRadius === '0px'")
+  await evaluate("window.__qaFullscreen = false; window.__qaEmit('tauri://resize', {width:1000,height:700})")
+  await waitFor("getComputedStyle(document.querySelector('.app-shell')).borderTopLeftRadius === '29px'")
   await screenshot('history-fixture.png')
   await evaluate("document.querySelectorAll('.history-row')[1].focus()")
   await screenshot('history-hover-fixture.png')

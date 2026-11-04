@@ -249,6 +249,9 @@ pub fn run() {
             )
             .title("EasyCopy")
             .decorations(false)
+            .transparent(true)
+            // Windows native shadows add a system border and a different corner radius.
+            .shadow(!cfg!(target_os = "windows"))
             .inner_size(1000.0, 700.0)
             .min_inner_size(760.0, 540.0)
             .visible(!autostart::is_login_launch(std::env::args()))
