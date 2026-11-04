@@ -348,9 +348,30 @@ async fn cancellation_is_a_tombstone_and_disk_reserve_rejects_before_upload() {
 #[tokio::test]
 async fn snapshot_has_ten_records_and_global_highwater_including_unfinished_intents() {
     let f = Fixture::new(DISK_RESERVE_BYTES).await;
+    let mut oldest = None;
     for n in 0..12 {
-        f.register(&intent(&format!("{n}"))).await;
+        let item = f.register(&intent(&format!("{n}"))).await;
+        if oldest.is_none() {
+            oldest = Some(item);
+        }
     }
+    let oldest = oldest.unwrap();
+    assert_eq!(
+        f.upload(oldest.id, b"too late").await.status(),
+        StatusCode::GONE
+    );
+    assert_eq!(
+        f.request(
+            reqwest::Method::GET,
+            &format!("/v1/items/{}/payload", oldest.id)
+        )
+        .send()
+        .await
+        .unwrap()
+        .status(),
+        StatusCode::GONE
+    );
+    assert_eq!(f.relay.item(oldest.id).unwrap().unwrap(), oldest);
     let mut socket = f.socket().await;
     let ServerEvent::Snapshot { items, high_water } = next_event(&mut socket).await else {
         panic!()

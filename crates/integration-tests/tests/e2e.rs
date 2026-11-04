@@ -55,6 +55,104 @@ fn digest(path: &Path) -> String {
     hex::encode(Sha256::digest(std::fs::read(path).unwrap()))
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn retained_history_reconnects_without_replaying_clipboard_or_reviving_old_files(
+) -> Result<()> {
+    let temp = tempfile::tempdir()?;
+    let relay = Relay::open(temp.path().join("relay"))?;
+    let listener = TcpListener::bind("127.0.0.1:0")?;
+    let address = listener.local_addr()?;
+    drop(listener);
+    let server = tokio::spawn(serve_relay(relay.clone(), address));
+    let pairing = relay.pairing();
+    let wire = Transport::new("127.0.0.1", address.port(), pairing.clone()).await?;
+    for attempt in 0..100 {
+        if wire.info().await.is_ok() {
+            break;
+        }
+        if attempt == 99 {
+            bail!("服务未启动");
+        }
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    let source = temp.path().join("text.txt");
+    std::fs::write(&source, "历史文本")?;
+    let (bytes, hash) = easycopy_client_core::archive::hash_file(&source)?;
+    let mut items = Vec::new();
+    let mut requests = Vec::new();
+    for n in 0..12 {
+        let request = intent(ContentKind::Text, &format!("历史 {n}"));
+        wire.register(&request).await?;
+        items.push(wire.upload(request.id, &source, bytes, &hash).await?);
+        requests.push(request);
+    }
+    assert_eq!(
+        std::fs::read_dir(relay.data_dir().join("payloads"))?.count(),
+        10
+    );
+    assert_eq!(wire.query(items[0].id).await?, items[0]);
+    assert_eq!(wire.register(&requests[0]).await?, items[0]);
+    assert_eq!(
+        wire.upload(items[0].id, &source, bytes, &hash).await?,
+        items[0]
+    );
+    let unavailable = temp.path().join("expired-download");
+    let error = wire
+        .download(&items[0], &unavailable, |_| {})
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("过期"));
+    assert!(!unavailable.exists());
+    assert!(!relay
+        .data_dir()
+        .join(format!("payloads/{}.payload", items[0].id))
+        .exists());
+
+    let clipboard = Arc::new(MemoryClipboard::default());
+    clipboard.set(ClipboardContent::Text("用户当前剪贴板".into()));
+    let core = ClientCore::open_with_clipboard(temp.path().join("client"), clipboard.clone())?;
+    core.save_settings(input(&pairing, address.port())).await?;
+    core.start().await;
+    until("最近十条历史下载完成", || {
+        core.is_connected()
+            && core.history().len() == 10
+            && core.history().iter().all(|i| i.status == "complete")
+    })
+    .await?;
+    let expected: Vec<_> = items[2..].iter().rev().map(|i| i.id).collect();
+    assert_eq!(
+        core.history().iter().map(|i| i.id).collect::<Vec<_>>(),
+        expected
+    );
+    assert_eq!(
+        clipboard.content(),
+        Some(ClipboardContent::Text("用户当前剪贴板".into()))
+    );
+    core.save_settings(input(&pairing, address.port())).await?;
+    until("再次重连", || core.is_connected()).await?;
+    assert_eq!(
+        core.history().iter().map(|i| i.id).collect::<Vec<_>>(),
+        expected
+    );
+    assert_eq!(
+        clipboard.content(),
+        Some(ClipboardContent::Text("用户当前剪贴板".into()))
+    );
+
+    let live = wire.register(&intent(ContentKind::Text, "新复制")).await?;
+    assert_eq!(live.sequence, items.last().unwrap().sequence + 1);
+    std::fs::write(&source, "新内容仍可实时同步")?;
+    let (bytes, hash) = easycopy_client_core::archive::hash_file(&source)?;
+    wire.upload(live.id, &source, bytes, &hash).await?;
+    until("新意图更新剪贴板", || {
+        clipboard.content() == Some(ClipboardContent::Text("新内容仍可实时同步".into()))
+    })
+    .await?;
+    core.shutdown();
+    server.abort();
+    Ok(())
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 6)]
 async fn real_tls_two_way_sync_ordering_files_and_offline_snapshot() -> Result<()> {
     let temp = tempfile::tempdir()?;
