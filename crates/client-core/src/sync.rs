@@ -4,6 +4,188 @@ use std::time::Duration;
 use tokio_tungstenite::tungstenite::Message;
 
 impl ClientCore {
+    fn token(&self, id: Uuid) -> CancellationToken {
+        self.state
+            .lock()
+            .unwrap()
+            .cancellations
+            .entry(id)
+            .or_default()
+            .clone()
+    }
+
+    pub(super) fn finish_cancelled_work(&self, id: Uuid, direction: &str) {
+        let prepared = {
+            let state = self.state.lock().unwrap();
+            state.saved.records.get(&id).is_some_and(|r| r.prepared)
+        };
+        let payload = self.payload_path(id);
+        let _ = std::fs::remove_file(payload.with_extension("preparing"));
+        let _ = std::fs::remove_file(payload.with_extension("downloading"));
+        if !prepared {
+            let _ = std::fs::remove_dir_all(payload.parent().unwrap().join("files"));
+            let _ = std::fs::remove_file(payload.with_file_name("capture"));
+        }
+        self.transfer(id, direction, "cancelled", 0, None, None);
+        {
+            let mut state = self.state.lock().unwrap();
+            state.in_flight.remove(&id);
+            state.pending_local.remove(&id);
+        }
+        let _ = self.persist();
+        let _ = self.events.send(ClientEvent::HistoryChanged);
+    }
+
+    pub fn cancel_transfer(self: &Arc<Self>, id: Uuid) -> Result<()> {
+        let direction = {
+            let mut state = self.state.lock().unwrap();
+            let record = state.saved.records.get(&id).context("历史记录已不存在")?;
+            if record.cancelled {
+                return Ok(());
+            }
+            if !state.in_flight.contains(&id) && !record.pending_upload {
+                return Ok(());
+            }
+            let own = record.capture_saved
+                || state.pending_local.contains(&id)
+                || record
+                    .item
+                    .as_ref()
+                    .is_some_and(|item| item.device_id == state.config.device_id);
+            let remote = own && record.server_id.is_some();
+            if let Some(token) = state.cancellations.get(&id) {
+                token.cancel();
+            }
+            let record = state.saved.records.get_mut(&id).unwrap();
+            record.cancelled = true;
+            record.remote_cancel_pending = remote;
+            record.pending_upload = false;
+            record.auto_apply = false;
+            record.entry.status = if remote { "cancelling" } else { "cancelled" }.into();
+            record.entry.error = None;
+            if own {
+                "upload"
+            } else {
+                "download"
+            }
+        };
+        self.persist()?;
+        let _ = self.events.send(ClientEvent::HistoryChanged);
+        self.transfer(id, direction, "cancelled", 0, None, None);
+        self.schedule_cancel_reconciliation(id);
+        Ok(())
+    }
+
+    pub(super) fn cancel_older_transfers(self: &Arc<Self>) {
+        let ids: Vec<_> = {
+            let state = self.state.lock().unwrap();
+            state
+                .saved
+                .records
+                .values()
+                .filter(|r| {
+                    !r.cancelled && (state.in_flight.contains(&r.entry.id) || r.pending_upload)
+                })
+                .map(|r| r.entry.id)
+                .collect()
+        };
+        for id in ids {
+            if let Err(error) = self.cancel_transfer(id) {
+                tracing::warn!(%error, %id, "cancel old transfer failed");
+            }
+        }
+    }
+
+    fn schedule_cancel_reconciliation(self: &Arc<Self>, id: Uuid) {
+        let work = {
+            let mut state = self.state.lock().unwrap();
+            if state.pending_local.contains(&id) || state.reconciling_cancellations.contains(&id) {
+                return;
+            }
+            let Some(record) = state.saved.records.get(&id) else {
+                return;
+            };
+            if !record.remote_cancel_pending {
+                return;
+            }
+            let transport = state
+                .transport
+                .clone()
+                .filter(|t| Some(t.pairing.server_id) == record.server_id);
+            if transport.is_some() {
+                state.reconciling_cancellations.insert(id);
+            }
+            transport
+        };
+        let Some(transport) = work else {
+            return;
+        };
+        let core = self.clone();
+        tokio::spawn(async move {
+            let cancelled = transport.cancel(id).await;
+            let result = if cancelled.is_ok() {
+                Some(false)
+            } else {
+                match transport.query(id).await {
+                    Ok(item) if item.status == ItemStatus::Complete => Some(true),
+                    Ok(item) if item.status == ItemStatus::Cancelled => Some(false),
+                    Ok(_) if transport.cancel(id).await.is_ok() => Some(false),
+                    _ => None,
+                }
+            };
+            {
+                let mut state = core.state.lock().unwrap();
+                state.reconciling_cancellations.remove(&id);
+                if let Some(record) = state.saved.records.get_mut(&id) {
+                    if let Some(completed) = result {
+                        record.remote_cancel_pending = false;
+                        record.entry.status =
+                            if completed { "complete" } else { "cancelled" }.into();
+                        if completed {
+                            record.entry.detail = "传输已完成，取消过晚".into();
+                        }
+                    }
+                }
+            }
+            let _ = core.persist();
+            let _ = core.events.send(ClientEvent::HistoryChanged);
+        });
+    }
+
+    pub fn retry_download(self: &Arc<Self>, id: Uuid) -> Result<()> {
+        let (item, epoch, generation) = {
+            let mut state = self.state.lock().unwrap();
+            let record = state.saved.records.get(&id).context("历史记录已不存在")?;
+            let item = record.item.clone().context("服务器记录不存在")?;
+            if !record.cancelled
+                || record.prepared
+                || item.device_id == state.config.device_id
+                || item.status != ItemStatus::Complete
+                || state.in_flight.contains(&id)
+            {
+                bail!("当前记录无法重新下载");
+            }
+            let epoch = state.epoch;
+            let generation = state.local_generation;
+            let record = state.saved.records.get_mut(&id).unwrap();
+            record.cancelled = false;
+            record.download_attempts = 0;
+            record.auto_apply = false;
+            record.entry.status = "downloading".into();
+            record.entry.error = None;
+            state.in_flight.insert(id);
+            state.cancellations.insert(id, CancellationToken::new());
+            *state.transfer_attempts.entry(id).or_default() += 1;
+            (item, epoch, generation)
+        };
+        self.persist()?;
+        let _ = self.events.send(ClientEvent::HistoryChanged);
+        let core = self.clone();
+        tokio::spawn(async move {
+            core.download_record(item, epoch, generation, false).await;
+        });
+        Ok(())
+    }
     pub(super) fn capture_locked(
         &self,
         state: &mut State,
@@ -31,7 +213,10 @@ impl ClientCore {
         state.saved.current = Some(id);
         state.pending_local.insert(id);
         state.in_flight.insert(id);
+        state.cancellations.insert(id, CancellationToken::new());
         let record = Record {
+            cancelled: false,
+            remote_cancel_pending: false,
             file_size_limit: None,
             server_id: if state.connected {
                 state.pairing.as_ref().map(|p| p.server_id)
@@ -49,6 +234,8 @@ impl ClientCore {
             },
             entry: HistoryEntry {
                 available: false,
+                can_cancel: false,
+                can_retry_download: false,
                 id,
                 kind,
                 device_name: state.config.device_name.clone(),
@@ -82,6 +269,7 @@ impl ClientCore {
                 .values()
                 .filter(|r| {
                     !r.prepared
+                        && !r.cancelled
                         && !state.pending_local.contains(&r.entry.id)
                         && (r
                             .item
@@ -93,6 +281,7 @@ impl ClientCore {
                 .collect();
             for id in &ids {
                 state.in_flight.insert(*id);
+                state.cancellations.insert(*id, CancellationToken::new());
             }
             ids
         };
@@ -107,6 +296,10 @@ impl ClientCore {
                 }
                 Err(error) => Err(error),
             };
+            if self.token(id).is_cancelled() {
+                self.finish_cancelled_work(id, "upload");
+                continue;
+            }
             match outcome {
                 Ok(()) => {
                     let (pending, connected) = {
@@ -186,6 +379,18 @@ impl ClientCore {
             if self.stopped.load(Ordering::SeqCst) {
                 break;
             }
+            if self.token(copy.id).is_cancelled() {
+                let mut state = self.state.lock().unwrap();
+                state.pending_local.remove(&copy.id);
+                state.in_flight.remove(&copy.id);
+                if let Some(record) = state.saved.records.get_mut(&copy.id) {
+                    record.remote_cancel_pending = false;
+                    record.entry.status = "cancelled".into();
+                }
+                drop(state);
+                self.finish_cancelled_work(copy.id, "upload");
+                continue;
+            }
             let registration = {
                 let state = self.state.lock().unwrap();
                 let record = &state.saved.records[&copy.id];
@@ -201,7 +406,22 @@ impl ClientCore {
             // Intents are registered serially in local capture order; payload work
             // starts only afterwards and may finish in any order.
             let registered = if let Some(transport) = copy.transport {
-                match transport.register(&registration).await {
+                let registration_request = transport.register(&registration);
+                tokio::pin!(registration_request);
+                let token = self.token(copy.id);
+                let response = tokio::select! {
+                    result = &mut registration_request => result,
+                    _ = token.cancelled() => {
+                        // If registration reached the server but its response is delayed,
+                        // its sequence is already fixed and the next intent can proceed.
+                        // Otherwise retain serial ordering until the request resolves.
+                        match transport.query(copy.id).await {
+                            Ok(item) => Ok(item),
+                            Err(_) => registration_request.await,
+                        }
+                    }
+                };
+                match response {
                     Ok(item) => Some(item),
                     Err(_) => transport.query(copy.id).await.ok(), // POST response may have been lost.
                 }
@@ -223,12 +443,21 @@ impl ClientCore {
                             record.ordering_sequence = item.sequence;
                         }
                         record.item = Some(item.clone());
-                        record.pending_upload = belongs;
+                        record.pending_upload = belongs && !record.cancelled;
                     }
                 }
                 Self::refresh_history(&mut state);
             }
             let _ = self.persist();
+            if self.token(copy.id).is_cancelled() {
+                if registered.is_none() {
+                    // The register response and query may both have been lost. Keep
+                    // the pending cancellation so reconnect can reconcile it.
+                }
+                self.schedule_cancel_reconciliation(copy.id);
+                self.finish_cancelled_work(copy.id, "upload");
+                continue;
+            }
             let core = self.clone();
             tokio::spawn(async move {
                 core.transfer(copy.id, "upload", "start", 0, None, None);
@@ -237,6 +466,10 @@ impl ClientCore {
                 let id = copy.id;
                 let prepared =
                     tokio::task::spawn_blocking(move || core2.prepare(id, copy.content)).await;
+                if core.token(id).is_cancelled() {
+                    core.finish_cancelled_work(id, "upload");
+                    return;
+                }
                 match prepared {
                     Ok(Ok(())) => {
                         if registered.is_some() {
@@ -277,6 +510,10 @@ impl ClientCore {
         }
     }
     fn prepare(&self, id: Uuid, content: ClipboardContent) -> Result<()> {
+        let token = self.token(id);
+        if token.is_cancelled() {
+            bail!("任务已取消");
+        }
         let payload = self.payload_path(id);
         std::fs::create_dir_all(payload.parent().unwrap())?;
         let temporary = payload.with_extension("preparing");
@@ -285,12 +522,18 @@ impl ClientCore {
         let (kind, files, thumbnail, detail) = match content {
             ClipboardContent::Files(paths) => {
                 let limit = self.state.lock().unwrap().saved.records[&id].file_size_limit;
-                packed_digest = Some(archive::pack_with_limit(&paths, &temporary, limit)?);
+                packed_digest = Some(archive::pack_cancellable(
+                    &paths,
+                    &temporary,
+                    limit,
+                    Some(&token),
+                )?);
                 let restore_path = payload.parent().unwrap().join("files");
                 if restore_path.exists() {
                     std::fs::remove_dir_all(&restore_path)?;
                 }
-                let restored = archive::unpack(&temporary, &restore_path)?;
+                let restored =
+                    archive::unpack_cancellable(&temporary, &restore_path, Some(&token))?;
                 (
                     ContentKind::Files,
                     restored,
@@ -322,9 +565,12 @@ impl ClientCore {
             Some(digest) => digest,
             None => archive::hash_file(&temporary)?,
         };
-        std::fs::rename(temporary, &payload)?;
         {
             let mut state = self.state.lock().unwrap();
+            if token.is_cancelled() {
+                bail!("任务已取消");
+            }
+            std::fs::rename(temporary, &payload)?;
             let record = state.saved.records.get_mut(&id).context("本地记录已丢失")?;
             record.prepared = true;
             record.files = files;
@@ -346,6 +592,11 @@ impl ClientCore {
         Ok(())
     }
     async fn upload_record(self: Arc<Self>, id: Uuid) {
+        let token = self.token(id);
+        if token.is_cancelled() {
+            self.finish_cancelled_work(id, "upload");
+            return;
+        }
         let (transport, item, retries) = {
             let mut state = self.state.lock().unwrap();
             let Some(record) = state.saved.records.get(&id) else {
@@ -376,6 +627,14 @@ impl ClientCore {
         let Some(sha256) = item.sha256 else {
             return;
         };
+        let payload_path = self.payload_path(id);
+        {
+            let mut state = self.state.lock().unwrap();
+            if let Some(record) = state.saved.records.get_mut(&id) {
+                record.entry.status = "uploading".into();
+            }
+        }
+        let _ = self.events.send(ClientEvent::HistoryChanged);
         self.transfer(id, "upload", "start", 0, Some(bytes), None);
         self.transfer(id, "upload", "transferring", 0, Some(bytes), None);
         let mut last_error = String::new();
@@ -384,18 +643,16 @@ impl ClientCore {
                 break;
             }
             if attempt > retries {
-                tokio::time::sleep(Duration::from_millis(500 * (1u64 << attempt))).await;
+                tokio::select! { _ = token.cancelled() => { self.finish_cancelled_work(id, "upload"); return; }, _ = tokio::time::sleep(Duration::from_millis(500 * (1u64 << attempt))) => {} }
             }
-            let query = transport.query(id).await;
+            let query = tokio::select! { _ = token.cancelled() => { self.finish_cancelled_work(id, "upload"); return; }, result = transport.query(id) => result };
             let result = match query {
                 Ok(item) if item.status == ItemStatus::Complete => Ok(item),
                 Ok(item) if item.status == ItemStatus::Cancelled => {
                     Err(anyhow::anyhow!("任务已取消"))
                 }
                 _ => {
-                    transport
-                        .upload(id, &self.payload_path(id), bytes, &sha256)
-                        .await
+                    tokio::select! { _ = token.cancelled() => { self.finish_cancelled_work(id, "upload"); return; }, result = transport.upload(id, &payload_path, bytes, &sha256) => result }
                 }
             };
             match result {
@@ -406,6 +663,11 @@ impl ClientCore {
                 {
                     {
                         let mut state = self.state.lock().unwrap();
+                        if token.is_cancelled() {
+                            drop(state);
+                            self.finish_cancelled_work(id, "upload");
+                            return;
+                        }
                         if let Some(record) = state.saved.records.get_mut(&id) {
                             record.entry.status = "complete".into();
                             record.entry.error = None;
@@ -430,6 +692,10 @@ impl ClientCore {
             }
             let _ = self.persist();
         }
+        if token.is_cancelled() {
+            self.finish_cancelled_work(id, "upload");
+            return;
+        }
         self.fail_record(id, "upload", &last_error);
     }
     async fn preparation_failed(self: Arc<Self>, id: Uuid, error: &str) {
@@ -452,6 +718,16 @@ impl ClientCore {
     fn fail_record(&self, id: Uuid, direction: &str, error: &str) {
         {
             let mut state = self.state.lock().unwrap();
+            if state
+                .saved
+                .records
+                .get(&id)
+                .is_some_and(|record| record.cancelled)
+            {
+                drop(state);
+                self.finish_cancelled_work(id, direction);
+                return;
+            }
             if let Some(record) = state.saved.records.get_mut(&id) {
                 record.entry.status = "failed".into();
                 record.entry.error = Some(error.into());
@@ -532,6 +808,8 @@ impl ClientCore {
                 _ = heartbeat.tick() => {
                     if self.stopped.load(Ordering::SeqCst) { return Ok(()); }
                     socket.send(Message::Ping(vec![].into())).await?;
+                    let pending: Vec<_> = { self.state.lock().unwrap().saved.records.values().filter(|r| r.remote_cancel_pending).map(|r| r.entry.id).collect() };
+                    for id in pending { self.schedule_cancel_reconciliation(id); }
                 }
                 message = socket.next() => {
                     let message = message.context("服务器关闭连接")??;
@@ -561,7 +839,15 @@ impl ClientCore {
                         }
                         ServerEvent::Failed { item } => {
                             let mut state = self.state.lock().unwrap();
-                            if let Some(record) = state.saved.records.get_mut(&item.id) { record.entry.error = item.error.clone(); record.item = Some(item); }
+                            if let Some(record) = state.saved.records.get_mut(&item.id) {
+                                if item.status == ItemStatus::Cancelled && !record.cancelled {
+                                    record.entry.status = "cancelled".into();
+                                    record.entry.error = None;
+                                } else if !record.cancelled { record.entry.error = item.error.clone(); }
+                                record.item = Some(item);
+                            }
+                            drop(state);
+                            let _ = self.events.send(ClientEvent::HistoryChanged);
                         }
                         ServerEvent::ResyncRequired => { bail!("事件队列已更新，正在重新获取历史"); }
                     }
@@ -589,6 +875,8 @@ impl ClientCore {
                 state.saved.records.insert(
                     item.id,
                     Record {
+                        cancelled: false,
+                        remote_cancel_pending: false,
                         file_size_limit: None,
                         server_id: Some(server_id),
                         capture_saved: false,
@@ -599,6 +887,8 @@ impl ClientCore {
                         source_refs: vec![],
                         entry: HistoryEntry {
                             available: false,
+                            can_cancel: false,
+                            can_retry_download: false,
                             id: item.id,
                             kind: item.kind,
                             device_name: item.device_name.clone(),
@@ -607,8 +897,17 @@ impl ClientCore {
                             preview: item.preview.clone(),
                             detail: "等待传输".into(),
                             thumbnail: None,
-                            status: "pending".into(),
-                            error: item.error.clone(),
+                            status: if item.status == ItemStatus::Cancelled {
+                                "cancelled"
+                            } else {
+                                "pending"
+                            }
+                            .into(),
+                            error: if item.status == ItemStatus::Cancelled {
+                                None
+                            } else {
+                                item.error.clone()
+                            },
                         },
                         item: Some(item.clone()),
                         local_order,
@@ -633,11 +932,15 @@ impl ClientCore {
             }
             Self::refresh_history(&mut state);
             let download = item.status == ItemStatus::Complete
+                && !state.saved.records[&item.id].cancelled
                 && !state.saved.records[&item.id].prepared
                 && state.saved.records[&item.id].download_attempts <= 3
                 && !state.in_flight.contains(&item.id);
             if download {
                 state.in_flight.insert(item.id);
+                state
+                    .cancellations
+                    .insert(item.id, CancellationToken::new());
             }
             (
                 download,
@@ -657,6 +960,7 @@ impl ClientCore {
         }
     }
     async fn download_record(self: Arc<Self>, item: Item, epoch: u64, generation: u64, live: bool) {
+        let token = self.token(item.id);
         let (transport, attempts) = {
             let state = self.state.lock().unwrap();
             let record = &state.saved.records[&item.id];
@@ -669,16 +973,26 @@ impl ClientCore {
             )
         };
         let Some(transport) = transport else {
+            self.state.lock().unwrap().in_flight.remove(&item.id);
             return;
         };
         let id = item.id;
         let payload = self.payload_path(id);
         let temporary = payload.with_extension("downloading");
+        {
+            let mut state = self.state.lock().unwrap();
+            if let Some(record) = state.saved.records.get_mut(&id) {
+                if !record.cancelled {
+                    record.entry.status = "downloading".into();
+                }
+            }
+        }
+        let _ = self.events.send(ClientEvent::HistoryChanged);
         self.transfer(id, "download", "start", 0, item.bytes, None);
         let mut error = String::new();
         for attempt in attempts..=3 {
             if attempt > 0 {
-                tokio::time::sleep(Duration::from_millis(500 * (1 << attempt))).await;
+                tokio::select! { _ = token.cancelled() => { self.finish_cancelled_work(id, "download"); return; }, _ = tokio::time::sleep(Duration::from_millis(500 * (1 << attempt))) => {} }
             }
             let _ = tokio::fs::remove_file(&temporary).await;
             if let Some(r) = self.state.lock().unwrap().saved.records.get_mut(&id) {
@@ -687,10 +1001,19 @@ impl ClientCore {
             let _ = self.persist();
             let core = self.clone();
             let result = transport
-                .download(&item, &temporary, move |bytes| {
-                    core.transfer(id, "download", "transferring", bytes, item.bytes, None)
-                })
+                .download_cancellable(
+                    &item,
+                    &temporary,
+                    move |bytes| {
+                        core.transfer(id, "download", "transferring", bytes, item.bytes, None)
+                    },
+                    &token,
+                )
                 .await;
+            if token.is_cancelled() {
+                self.finish_cancelled_work(id, "download");
+                return;
+            }
             match result {
                 Ok(()) => {
                     self.transfer(
@@ -709,6 +1032,10 @@ impl ClientCore {
                         core.finish_download(&item2, &temp2, &payload2)
                     })
                     .await;
+                    if token.is_cancelled() {
+                        self.finish_cancelled_work(id, "download");
+                        return;
+                    }
                     match restored {
                         Ok(Ok(())) => {
                             // Re-check ALL intent boundaries after full download and restore.
@@ -717,6 +1044,7 @@ impl ClientCore {
                                 let _serial = self.capture_serial.lock().unwrap();
                                 let mut state = self.state.lock().unwrap();
                                 if live
+                                    && !token.is_cancelled()
                                     && state.connected
                                     && state.epoch == epoch
                                     && item.sequence > state.high_water
@@ -771,9 +1099,17 @@ impl ClientCore {
             }
         }
         let _ = tokio::fs::remove_file(temporary).await;
+        if token.is_cancelled() {
+            self.finish_cancelled_work(id, "download");
+            return;
+        }
         self.fail_record(id, "download", &error);
     }
     fn finish_download(&self, item: &Item, temporary: &Path, payload: &Path) -> Result<()> {
+        let token = self.token(item.id);
+        if token.is_cancelled() {
+            bail!("任务已取消");
+        }
         let (files, thumbnail, detail) = match item.kind {
             ContentKind::Text => {
                 std::fs::read_to_string(temporary).context("文本不是 UTF-8")?;
@@ -789,13 +1125,20 @@ impl ClientCore {
                 )
             }
             ContentKind::Files => {
-                let files = archive::unpack(temporary, &payload.parent().unwrap().join("files"))?;
+                let files = archive::unpack_cancellable(
+                    temporary,
+                    &payload.parent().unwrap().join("files"),
+                    Some(&token),
+                )?;
                 let count = files.len();
                 (files, None, format!("{count} 个项目"))
             }
         };
-        std::fs::rename(temporary, payload)?;
         let mut state = self.state.lock().unwrap();
+        if token.is_cancelled() {
+            bail!("任务已取消");
+        }
+        std::fs::rename(temporary, payload)?;
         if let Some(record) = state.saved.records.get_mut(&item.id) {
             record.prepared = true;
             record.files = files;
@@ -844,7 +1187,7 @@ impl ClientCore {
         }
         let mut remove = Vec::new();
         for (id, record) in &mut state.saved.records {
-            if protected.contains(id) || record.pending_upload {
+            if protected.contains(id) || record.pending_upload || record.remote_cancel_pending {
                 record.unreferenced_at = None;
             } else {
                 remove.push(*id);
@@ -856,6 +1199,8 @@ impl ClientCore {
                 std::fs::remove_dir_all(path)?;
             }
             state.saved.records.remove(&id);
+            state.cancellations.remove(&id);
+            state.transfer_attempts.remove(&id);
         }
         // Interrupted earlier runs can leave cache directories without a record.
         // Restrict cleanup to real directories named like our record IDs.

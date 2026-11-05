@@ -22,7 +22,7 @@ impl OverlayState {
             if self
                 .current
                 .as_ref()
-                .is_some_and(|e| matches!(e.phase.as_str(), "complete" | "failed"))
+                .is_some_and(|e| matches!(e.phase.as_str(), "complete" | "failed" | "cancelled"))
             {
                 return None;
             }
@@ -39,7 +39,7 @@ impl OverlayState {
     }
     pub fn finish(&mut self, task_id: &str) -> bool {
         if self.current.as_ref().is_some_and(|e| {
-            e.task_id == task_id && matches!(e.phase.as_str(), "complete" | "failed")
+            e.task_id == task_id && matches!(e.phase.as_str(), "complete" | "failed" | "cancelled")
         }) {
             self.current = None;
             self.retired.insert(task_id.to_owned());

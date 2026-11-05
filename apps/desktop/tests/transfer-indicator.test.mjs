@@ -21,6 +21,15 @@ function harness(options = {}) {
 }
 const event = (phase, extra = {}) => ({ taskId: 'a', direction: 'upload', phase, receivedBytes: 0, totalBytes: null, error: null, ...extra })
 
+test('cancelled transfer fades and ignores late progress', () => {
+  const h = harness()
+  h.indicator.accept(event('start')); h.frame(0)
+  h.time(400); h.indicator.accept(event('cancelled'))
+  assert.equal(h.indicator.accept(event('transferring', { receivedBytes: 5 })), false)
+  h.frame(540)
+  assert.deepEqual(h.hidden, ['a'])
+})
+
 test('instant complete stays 300ms from its first rendered frame, then fades for 140ms', () => {
   const h = harness()
   h.indicator.accept(event('start'))

@@ -20,6 +20,7 @@ use std::{
     },
 };
 use tokio::sync::{broadcast, mpsc, Notify};
+use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -27,6 +28,10 @@ use uuid::Uuid;
 pub struct HistoryEntry {
     #[serde(default)]
     pub available: bool,
+    #[serde(default)]
+    pub can_cancel: bool,
+    #[serde(default)]
+    pub can_retry_download: bool,
     pub id: Uuid,
     pub kind: ContentKind,
     pub device_name: String,
@@ -72,6 +77,10 @@ pub enum ClientEvent {
 
 #[derive(Clone, Serialize, Deserialize)]
 struct Record {
+    #[serde(default)]
+    cancelled: bool,
+    #[serde(default)]
+    remote_cancel_pending: bool,
     #[serde(default)]
     file_size_limit: Option<u64>,
     #[serde(default)]
@@ -140,6 +149,9 @@ struct State {
     pending_file_copy: Option<upload_confirmation::PendingFileCopy>,
     pending_local: HashSet<Uuid>,
     in_flight: HashSet<Uuid>,
+    cancellations: HashMap<Uuid, CancellationToken>,
+    reconciling_cancellations: HashSet<Uuid>,
+    transfer_attempts: HashMap<Uuid, u64>,
 }
 struct LocalCopy {
     id: Uuid,
@@ -231,6 +243,9 @@ impl ClientCore {
                 pending_file_copy: None,
                 pending_local: HashSet::new(),
                 in_flight: HashSet::new(),
+                cancellations: HashMap::new(),
+                reconciling_cancellations: HashSet::new(),
+                transfer_attempts: HashMap::new(),
             }),
             events,
             local_tx,
@@ -258,6 +273,15 @@ impl ClientCore {
                 state.saved.records.get(id).map(|r| {
                     let mut entry = r.entry.clone();
                     entry.available = r.prepared;
+                    entry.can_cancel =
+                        !r.cancelled && (state.in_flight.contains(&entry.id) || r.pending_upload);
+                    entry.can_retry_download = r.cancelled
+                        && !r.prepared
+                        && !state.in_flight.contains(&entry.id)
+                        && r.item.as_ref().is_some_and(|item| {
+                            item.device_id != state.config.device_id
+                                && item.status == ItemStatus::Complete
+                        });
                     entry
                 })
             })
@@ -348,6 +372,20 @@ impl ClientCore {
     pub async fn start(self: &Arc<Self>) {
         if self.started.swap(true, Ordering::SeqCst) {
             return;
+        }
+        let cancelled: Vec<_> = {
+            self.state
+                .lock()
+                .unwrap()
+                .saved
+                .records
+                .values()
+                .filter(|r| r.cancelled && !r.prepared)
+                .map(|r| r.entry.id)
+                .collect()
+        };
+        for id in cancelled {
+            self.finish_cancelled_work(id, "upload");
         }
         let core = self.clone();
         tokio::spawn(async move {
@@ -627,8 +665,16 @@ impl ClientCore {
         total: Option<u64>,
         error: Option<String>,
     ) {
+        let attempt = self
+            .state
+            .lock()
+            .unwrap()
+            .transfer_attempts
+            .get(&id)
+            .copied()
+            .unwrap_or(0);
         let _ = self.events.send(ClientEvent::Transfer(TransferEvent {
-            task_id: format!("{direction}:{id}"),
+            task_id: format!("{direction}:{id}:{attempt}"),
             direction: direction.into(),
             phase: phase.into(),
             received_bytes: received,
@@ -895,5 +941,41 @@ mod tests {
             clipboard.content(),
             Some(ClipboardContent::Text("new local intent".into()))
         );
+    }
+
+    #[tokio::test]
+    async fn cancelled_queued_copy_is_not_recovered_after_restart() {
+        let root = tempfile::tempdir().unwrap();
+        let clipboard = Arc::new(MemoryClipboard::default());
+        let core = ClientCore::open_with_clipboard(root.path().into(), clipboard.clone()).unwrap();
+        let old = core
+            .submit_content(ClipboardContent::Text("old".into()))
+            .await
+            .unwrap();
+        let new = core
+            .submit_content(ClipboardContent::Text("new".into()))
+            .await
+            .unwrap();
+        assert!(core
+            .history()
+            .iter()
+            .any(|entry| entry.id == old && entry.status == "cancelled"));
+        drop(core);
+        let restarted =
+            ClientCore::open_with_clipboard(root.path().into(), clipboard.clone()).unwrap();
+        restarted.start().await;
+        assert!(restarted
+            .history()
+            .iter()
+            .any(|entry| entry.id == old && entry.status == "cancelled" && !entry.available));
+        assert!(restarted
+            .history()
+            .iter()
+            .any(|entry| entry.id == new && entry.available));
+        assert_eq!(
+            clipboard.content(),
+            Some(ClipboardContent::Text("new".into()))
+        );
+        restarted.shutdown();
     }
 }

@@ -54,6 +54,9 @@ h1 { margin: 1px 0 24px; font-weight: 650; letter-spacing: 1px; font-size: 30px;
 .item-description > .error-text { color: #f1ad98; }
 .item-actions { position: absolute; right: 12px; display: flex; gap: 9px; opacity: 0; pointer-events: none; padding: 9px 0 9px 30px; background: linear-gradient(90deg, transparent, #403c38 15%); }
 .history-row:hover .item-actions, .history-row:focus-within .item-actions { opacity: 1; pointer-events: auto; }
+.row-transfer-action .item-actions { opacity: 1; pointer-events: auto; }
+.row-transfer-action:not(:hover):not(:focus-within) .item-actions { background: transparent; }
+.row-transfer-action .item-body { padding-right: 110px; }
 .history-row:hover .item-body, .history-row:focus-within .item-body { padding-right: 172px; }
 .item-actions button { height: 34px; padding: 0 11px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid #635c56; border-radius: 10px; font-size: 14px; white-space: nowrap; background: #423d38; }
 .item-actions button:hover:enabled { background: #514a44; border-color: #8a7f75; }

@@ -77,6 +77,7 @@ try {
       { ...base, id: 'text-b', kind: 'text', deviceName: 'MacBook Pro', createdAt: base.createdAt - 960000, preview: '会议时间改为明天下午三点。', detail: '文本' },
       { ...base, id: 'files-b', kind: 'files', deviceName: 'Windows', createdAt: base.createdAt - 1440000, preview: '项目素材', detail: '文件夹 · 18.6 MB' },
     ];
+    window.__qaRows = rows;
     window.__qaCalls = [];
     window.__qaFilePrompt = null;
     window.__qaFileThreshold = 50;
@@ -123,7 +124,7 @@ try {
         }
         if (cmd === 'get_connection') return { connected: false, message: '界面测试数据 · 未连接真实服务器' };
         if (cmd === 'test_connection') return { protocol_version: 1, server_id: 'test', logical_name: 'test.invalid' };
-        if (cmd === 'copy_item' || cmd === 'save_item' || cmd === 'save_settings' || cmd === 'overlay_ready' || cmd === 'overlay_hidden') return;
+        if (cmd === 'copy_item' || cmd === 'save_item' || cmd === 'cancel_transfer' || cmd === 'retry_download' || cmd === 'save_settings' || cmd === 'overlay_ready' || cmd === 'overlay_hidden') return;
         throw new Error('Unmocked command '+cmd);
       }
     };
@@ -165,6 +166,16 @@ try {
   await evaluate("document.querySelectorAll('.history-row')[2].querySelector('.item-actions button').click()")
   await waitFor("window.__qaCalls.some(c => c.cmd === 'save_item' && c.args.id === 'files-a')")
   assert.equal(await evaluate("window.__qaCalls.some(c => c.cmd === 'copy_item' && c.args.id.startsWith('files'))"), false)
+  await evaluate("window.__qaEmit('history-changed', [{...window.__qaRows[2], id:'running', status:'uploading', canCancel:true, available:false}, {...window.__qaRows[2], id:'cancelled', status:'cancelled', canRetryDownload:true, available:false}])")
+  await waitFor("document.querySelectorAll('.row-transfer-action').length === 2")
+  assert.equal(await evaluate("getComputedStyle(document.querySelector('.row-transfer-action .item-actions')).opacity"), '1')
+  await screenshot('cancellation-fixture.png')
+  await evaluate("document.querySelectorAll('.row-transfer-action')[0].querySelector('button').click()")
+  await waitFor("window.__qaCalls.some(c => c.cmd === 'cancel_transfer' && c.args.id === 'running')")
+  await evaluate("document.querySelectorAll('.row-transfer-action')[1].querySelector('button').click()")
+  await waitFor("window.__qaCalls.some(c => c.cmd === 'retry_download' && c.args.id === 'cancelled')")
+  await evaluate("window.__qaEmit('history-changed', window.__qaRows)")
+  await waitFor("document.querySelectorAll('.history-row').length === 5")
   for (const [id, action, expected] of [['large-default', 'enter', false], ['large-escape', 'escape', false], ['large-close', 'close', false], ['large-yes', 'yes', true]]) {
     await evaluate(`window.__qaFilePrompt = { id: '${id}', bytes: 75000001, thresholdMb: 50 }; window.__qaEmit('file-upload-prompt', window.__qaFilePrompt)`)
     await waitFor("document.querySelector('.file-upload-dialog').open && document.activeElement.textContent.trim() === '否'")

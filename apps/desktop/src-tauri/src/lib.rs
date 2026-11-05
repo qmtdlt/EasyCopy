@@ -105,6 +105,20 @@ async fn copy_item(state: tauri::State<'_, DesktopState>, id: String) -> Result<
         .map_err(|e| e.to_string())
 }
 #[tauri::command]
+fn cancel_transfer(state: tauri::State<'_, DesktopState>, id: String) -> Result<(), String> {
+    state
+        .core
+        .cancel_transfer(Uuid::parse_str(&id).map_err(|_| "无效记录身份")?)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn retry_download(state: tauri::State<'_, DesktopState>, id: String) -> Result<(), String> {
+    state
+        .core
+        .retry_download(Uuid::parse_str(&id).map_err(|_| "无效记录身份")?)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
 async fn save_item(
     app: tauri::AppHandle,
     state: tauri::State<'_, DesktopState>,
@@ -232,6 +246,8 @@ pub fn run() {
             autostart::get_autostart,
             autostart::set_autostart,
             copy_item,
+            cancel_transfer,
+            retry_download,
             save_item,
             overlay_ready,
             overlay_hidden

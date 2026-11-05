@@ -25,7 +25,7 @@ onMounted(async () => {
         if (canvas.value) drawArt(canvas.value, state.direction, state.progress)
         opacity.value = state.opacity
         failed.value = state.phase === 'failed'
-        label.value = failed.value ? '传输失败' : state.phase === 'complete' ? '传输完成' : state.direction === 'upload' ? '正在上传' : '正在下载'
+        label.value = failed.value ? '传输失败' : state.phase === 'complete' ? '传输完成' : state.phase === 'cancelled' ? '已取消' : state.direction === 'upload' ? '正在上传' : '正在下载'
       },
       onHidden: taskId => { void api.overlayHidden(taskId).catch(error => console.error('悬浮窗口隐藏失败', error)) },
     })

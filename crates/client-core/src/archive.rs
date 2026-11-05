@@ -7,7 +7,15 @@ use std::{
     io::{BufWriter, Read, Write},
     path::{Component, Path, PathBuf},
 };
+use tokio_util::sync::CancellationToken;
 use unicode_normalization::UnicodeNormalization;
+
+fn check_cancel(token: Option<&CancellationToken>) -> Result<()> {
+    if token.is_some_and(CancellationToken::is_cancelled) {
+        bail!("任务已取消");
+    }
+    Ok(())
+}
 
 // Buffer before GuardedWriter so each actual disk write still reserves space.
 // TAR's small writes otherwise issue a filesystem space query for every 8 KiB.
@@ -104,6 +112,7 @@ pub fn write_checked(path: &Path, bytes: &[u8]) -> Result<()> {
     let mut output = GuardedWriter {
         file: File::create(path)?,
         directory: directory.into(),
+        cancel: None,
     };
     output.write_all(bytes)?;
     output.file.sync_all()?;
@@ -113,9 +122,17 @@ pub fn write_checked(path: &Path, bytes: &[u8]) -> Result<()> {
 struct GuardedWriter {
     file: File,
     directory: PathBuf,
+    cancel: Option<CancellationToken>,
 }
 impl Write for GuardedWriter {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        if self
+            .cancel
+            .as_ref()
+            .is_some_and(CancellationToken::is_cancelled)
+        {
+            return Err(std::io::Error::other("任务已取消"));
+        }
         let _reservation =
             reserve_write(&self.directory, buf.len() as u64).map_err(std::io::Error::other)?;
         self.file.write(buf)
@@ -126,11 +143,15 @@ impl Write for GuardedWriter {
 }
 
 pub fn hash_file(path: &Path) -> Result<(u64, String)> {
+    hash_file_cancellable(path, None)
+}
+fn hash_file_cancellable(path: &Path, cancel: Option<&CancellationToken>) -> Result<(u64, String)> {
     let mut input = File::open(path)?;
     let mut hash = Sha256::new();
     let mut buf = [0u8; 128 * 1024];
     let mut total = 0;
     loop {
+        check_cancel(cancel)?;
         let n = input.read(&mut buf)?;
         if n == 0 {
             break;
@@ -151,6 +172,14 @@ pub(crate) fn pack_with_limit(
     destination: &Path,
     limit: Option<u64>,
 ) -> Result<(u64, String)> {
+    pack_cancellable(paths, destination, limit, None)
+}
+pub(crate) fn pack_cancellable(
+    paths: &[PathBuf],
+    destination: &Path,
+    limit: Option<u64>,
+    cancel: Option<&CancellationToken>,
+) -> Result<(u64, String)> {
     if paths.is_empty() {
         bail!("没有要同步的文件");
     }
@@ -167,6 +196,7 @@ pub(crate) fn pack_with_limit(
             .follow_links(false)
             .sort_by_file_name()
         {
+            check_cancel(cancel)?;
             let entry = entry?;
             let meta = fs::symlink_metadata(entry.path())?;
             if !meta.is_file() && !meta.is_dir() {
@@ -199,10 +229,12 @@ pub(crate) fn pack_with_limit(
             .create_new(true)
             .open(destination)?,
         directory: directory.into(),
+        cancel: cancel.cloned(),
     };
     let mut archive = tar::Builder::new(BufWriter::with_capacity(FILE_BUFFER_BYTES, writer));
     archive.follow_symlinks(false);
     for (source, name, before) in entries {
+        check_cancel(cancel)?;
         let now = fs::symlink_metadata(&source)?;
         if now.is_symlink() || now.len() != before.len() || now.modified()? != before.modified()? {
             bail!("准备期间源文件已变化：{}", source.display());
@@ -252,12 +284,19 @@ pub(crate) fn pack_with_limit(
     let mut writer = archive.into_inner()?;
     writer.flush()?;
     writer.get_ref().file.sync_all()?;
-    hash_file(destination)
+    hash_file_cancellable(destination, cancel)
 }
 
 /// Never delegates extraction to TAR's generic unpack: only ordinary files/dirs,
 /// create_new, portable relative paths, and no duplicate/case/Unicode aliases.
 pub fn unpack(payload: &Path, destination: &Path) -> Result<Vec<PathBuf>> {
+    unpack_cancellable(payload, destination, None)
+}
+pub(crate) fn unpack_cancellable(
+    payload: &Path,
+    destination: &Path,
+    cancel: Option<&CancellationToken>,
+) -> Result<Vec<PathBuf>> {
     if destination.exists() {
         bail!("还原目标已存在");
     }
@@ -269,6 +308,7 @@ pub fn unpack(payload: &Path, destination: &Path) -> Result<Vec<PathBuf>> {
         let mut aliases = HashMap::new();
         let mut roots = HashSet::new();
         for entry in archive.entries()? {
+            check_cancel(cancel)?;
             let mut entry = entry?;
             let kind = entry.header().entry_type();
             if !(kind.is_file() || kind.is_dir()) {
@@ -293,6 +333,7 @@ pub fn unpack(payload: &Path, destination: &Path) -> Result<Vec<PathBuf>> {
                         .write(true)
                         .open(&target)?,
                     directory: destination.into(),
+                    cancel: cancel.cloned(),
                 };
                 let mut output = BufWriter::with_capacity(FILE_BUFFER_BYTES, output);
                 std::io::copy(&mut entry, &mut output)?;
@@ -336,6 +377,7 @@ pub fn copy_saved(source: &Path, target: &Path) -> Result<()> {
                 .create_new(true)
                 .open(target)?,
             directory: parent.into(),
+            cancel: None,
         };
         std::io::copy(&mut File::open(source)?, &mut output)?;
         output.file.sync_all()?;
@@ -346,6 +388,23 @@ pub fn copy_saved(source: &Path, target: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cancelled_pack_and_restore_do_not_change_source() {
+        let root = tempfile::tempdir().unwrap();
+        let source = root.path().join("source.txt");
+        fs::write(&source, b"original").unwrap();
+        let token = CancellationToken::new();
+        token.cancel();
+        let interrupted = root.path().join("interrupted.tar");
+        assert!(pack_cancellable(&[source.clone()], &interrupted, None, Some(&token)).is_err());
+        let archive = root.path().join("complete.tar");
+        pack(&[source.clone()], &archive).unwrap();
+        let output = root.path().join("out");
+        assert!(unpack_cancellable(&archive, &output, Some(&token)).is_err());
+        assert!(!output.exists());
+        assert_eq!(fs::read(source).unwrap(), b"original");
+    }
     #[test]
     fn buffered_archive_digest_and_snapshot_survive_source_changes() {
         let root = tempfile::tempdir().unwrap();

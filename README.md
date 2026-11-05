@@ -30,6 +30,8 @@ npm run tauri -- dev
 
 `192.168.1.48` 的离线部署、客户端配对及维护步骤见 [Ubuntu 部署记录](docs/Ubuntu部署记录.md)。
 
+从 Windows PC 构建 Linux 镜像并部署到该服务器的规划见 [Windows 构建与部署方案](docs/Windows构建部署方案.md)；该方案尚待 Windows 实机验证。macOS 继续使用上述既有流程。
+
 以下为可访问镜像仓库的 Linux Docker 主机上的常规构建方式：
 
 ```sh

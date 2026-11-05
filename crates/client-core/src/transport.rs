@@ -14,6 +14,7 @@ use tokio::{io::AsyncWriteExt, net::TcpStream};
 use tokio_tungstenite::{
     tungstenite::client::IntoClientRequest, Connector, MaybeTlsStream, WebSocketStream,
 };
+use tokio_util::sync::CancellationToken;
 
 const TRANSFER_BUFFER_BYTES: usize = 256 * 1024;
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(50);
@@ -173,19 +174,31 @@ impl Transport {
         destination: &Path,
         progress: impl Fn(u64) + Send,
     ) -> Result<()> {
+        self.download_cancellable(item, destination, progress, &CancellationToken::new())
+            .await
+    }
+
+    pub(crate) async fn download_cancellable(
+        &self,
+        item: &Item,
+        destination: &Path,
+        progress: impl Fn(u64) + Send,
+        cancel: &CancellationToken,
+    ) -> Result<()> {
         let expected = item.bytes.context("服务器缺少内容长度")?;
         let digest = item.sha256.as_ref().context("服务器缺少内容摘要")?;
         let directory = destination.parent().context("缓存目录无效")?;
         tokio::fs::create_dir_all(directory).await?;
         ensure_space(directory, expected)?;
-        let response = Self::checked(
-            self.client
-                .get(self.url(&format!("/v1/items/{}/payload", item.id)))
-                .bearer_auth(&self.pairing.secret)
-                .send()
-                .await?,
-        )
-        .await?;
+        let response = tokio::select! {
+            _ = cancel.cancelled() => bail!("任务已取消"),
+            response = async {
+                Self::checked(self.client
+                    .get(self.url(&format!("/v1/items/{}/payload", item.id)))
+                    .bearer_auth(&self.pairing.secret)
+                    .send().await?).await
+            } => response?,
+        };
         if let Some(length) = response.content_length() {
             if length != expected {
                 bail!("下载长度与登记内容不一致");
@@ -201,10 +214,14 @@ impl Transport {
         let mut sha = Sha256::new();
         let mut pending = Vec::with_capacity(TRANSFER_BUFFER_BYTES);
         let mut last_progress = Instant::now();
-        while let Some(chunk) = tokio::time::timeout(Duration::from_secs(45), stream.next())
-            .await
-            .context("下载长时间未收到数据")?
-        {
+        loop {
+            let chunk = tokio::select! {
+                _ = cancel.cancelled() => bail!("任务已取消"),
+                chunk = tokio::time::timeout(Duration::from_secs(45), stream.next()) => chunk.context("下载长时间未收到数据")?,
+            };
+            let Some(chunk) = chunk else {
+                break;
+            };
             let chunk = chunk?;
             if received.saturating_add(chunk.len() as u64) > expected {
                 bail!("服务器发送超出声明长度的内容");
@@ -216,6 +233,9 @@ impl Transport {
                 remaining = &remaining[take..];
                 if pending.len() == TRANSFER_BUFFER_BYTES {
                     write_download_block(&mut output, directory, &pending).await?;
+                    if cancel.is_cancelled() {
+                        bail!("任务已取消");
+                    }
                     pending.clear();
                 }
             }
@@ -227,7 +247,13 @@ impl Transport {
             }
         }
         write_download_block(&mut output, directory, &pending).await?;
+        if cancel.is_cancelled() {
+            bail!("任务已取消");
+        }
         output.sync_all().await?;
+        if cancel.is_cancelled() {
+            bail!("任务已取消");
+        }
         if received != expected || hex::encode(sha.finalize()) != *digest {
             bail!("下载内容校验失败");
         }

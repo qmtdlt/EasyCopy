@@ -11,6 +11,8 @@ export interface HistoryEntry {
   thumbnail: string | null
   status: string
   available: boolean
+  canCancel: boolean
+  canRetryDownload: boolean
   error: string | null
 }
 
@@ -34,7 +36,7 @@ export interface ServerInfo { protocol_version: number; server_id: string; logic
 export interface TransferEvent {
   taskId: string
   direction: 'upload' | 'download'
-  phase: 'start' | 'preparing' | 'transferring' | 'verifying' | 'complete' | 'failed'
+  phase: 'start' | 'preparing' | 'transferring' | 'verifying' | 'complete' | 'failed' | 'cancelled'
   receivedBytes: number
   totalBytes: number | null
   error: string | null

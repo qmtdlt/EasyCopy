@@ -59,7 +59,8 @@ impl ClientCore {
 
     // Called under capture_serial. No rejected/pending request is persisted or
     // registered with the relay, so neither restart nor reconnect can send it.
-    pub(super) fn invalidate_file_prompt(&self) {
+    pub(super) fn invalidate_file_prompt(self: &Arc<Self>) {
+        self.cancel_older_transfers();
         let mut state = self.state.lock().unwrap();
         state.local_generation += 1;
         state.saved.current = None;

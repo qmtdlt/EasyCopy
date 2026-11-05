@@ -30,7 +30,7 @@ export class TransferIndicator {
       task.totalBytes = event.totalBytes === null ? null : Math.max(0, Number(event.totalBytes) || 0)
       task.progress = task.totalBytes > 0 ? Math.min(1, task.receivedBytes / task.totalBytes) : 0
     }
-    if (event.phase === 'complete' || event.phase === 'failed') {
+    if (event.phase === 'complete' || event.phase === 'failed' || event.phase === 'cancelled') {
       task.terminal = true
       task.terminalAt = task.firstFrame === null ? null : this.now()
       task.error = event.error || null

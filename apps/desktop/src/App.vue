@@ -57,7 +57,7 @@ function exactTime(timestamp: number) { return new Date(timestamp).toLocaleStrin
 function available(item: HistoryEntry) { return item.available }
 function statusText(item: HistoryEntry) {
   if (item.error) return item.error
-  const labels: Record<string, string> = { preparing: '正在准备…', pending: '等待同步…', registered: '等待传输…', uploading: '正在上传…', downloading: '正在下载…', verifying: '正在校验…', failed: '同步失败', cancelled: '已取消' }
+  const labels: Record<string, string> = { preparing: '正在准备…', pending: '等待同步…', registered: '等待传输…', uploading: '正在上传…', downloading: '正在下载…', verifying: '正在校验…', cancelling: '正在取消…', failed: '同步失败', cancelled: '已取消' }
   return labels[item.status] || ''
 }
 function changed() { formMessage.value = ''; formError.value = false }
@@ -84,11 +84,13 @@ async function submit(action: 'test' | 'save') {
   finally { busy.value = null }
 }
 
-async function act(item: HistoryEntry, action: 'copy' | 'save') {
+async function act(item: HistoryEntry, action: 'copy' | 'save' | 'cancel' | 'retry') {
   rowBusy.value = item.id
   try {
     if (action === 'copy') { await api.copy(item.id); showNotice('已复制') }
-    else await api.saveItem(item.id)
+    else if (action === 'save') await api.saveItem(item.id)
+    else if (action === 'cancel') await api.cancelTransfer(item.id)
+    else await api.retryDownload(item.id)
   } catch (error) { showNotice(errorText(error), true) }
   finally { rowBusy.value = null }
 }
@@ -149,7 +151,7 @@ onBeforeUnmount(() => { destroyed = true; window.removeEventListener('keydown', 
           <span>{{ native ? '复制文本、图片或文件后，会显示在这里。' : '请启动桌面客户端，查看真实剪贴板记录。' }}</span>
         </div>
         <ul v-else class="history-list" aria-label="剪贴板记录">
-          <li v-for="item in items" :key="item.id" class="history-row" tabindex="0" :class="{ 'row-pending': !available(item) }">
+          <li v-for="item in items" :key="item.id" class="history-row" tabindex="0" :class="{ 'row-pending': !available(item), 'row-transfer-action': item.canCancel || item.canRetryDownload }">
             <div class="item-icon"><Icon :name="item.kind" :size="25" /></div>
             <div class="item-origin"><time :datetime="new Date(item.createdAt).toISOString()" :title="exactTime(item.createdAt)">{{ clock(item.createdAt) }}</time><span :title="item.deviceName">{{ item.deviceName }}</span></div>
             <div class="item-body">
@@ -157,8 +159,10 @@ onBeforeUnmount(() => { destroyed = true; window.removeEventListener('keydown', 
               <div class="item-description"><p :title="item.preview">{{ item.preview || (item.kind === 'image' ? '图片' : item.kind === 'files' ? '文件' : '空文本') }}</p><span :class="{ 'error-text': !!item.error }" :title="item.error || item.detail">{{ statusText(item) || item.detail || (item.kind === 'text' ? '文本' : '') }}</span></div>
             </div>
             <div class="item-actions">
-              <button v-if="item.kind !== 'files'" :disabled="!available(item) || rowBusy === item.id" @click="act(item, 'copy')"><Icon name="copy" :size="17" />复制</button>
-              <button :disabled="!available(item) || rowBusy === item.id" @click="act(item, 'save')"><Icon name="download" :size="17" />另存为</button>
+              <button v-if="item.canCancel" :disabled="rowBusy === item.id" @click="act(item, 'cancel')">取消</button>
+              <button v-if="item.canRetryDownload" :disabled="rowBusy === item.id" @click="act(item, 'retry')">重新下载</button>
+              <button v-if="!item.canCancel && !item.canRetryDownload && item.kind !== 'files'" :disabled="!available(item) || rowBusy === item.id" @click="act(item, 'copy')"><Icon name="copy" :size="17" />复制</button>
+              <button v-if="!item.canCancel && !item.canRetryDownload" :disabled="!available(item) || rowBusy === item.id" @click="act(item, 'save')"><Icon name="download" :size="17" />另存为</button>
             </div>
           </li>
         </ul>
