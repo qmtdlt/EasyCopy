@@ -45,7 +45,9 @@ WebView2 策略为 `downloadBootstrapper`：已有运行时则复用；缺少时
 
 自动检查内容：安装包及应用未签名、静默安装退出码、默认用户安装目录、AMD64 PE 架构、应用和注册表版本、开始菜单与桌面快捷方式指向、同版本覆盖安装、数据哨兵保留、静默卸载及卸载注册项移除。哨兵是 CI 生成的无敏感内容文件，不是用户真实配置；这些检查不证明设置迁移和凭据读取正确。
 
-截至本次实现，Windows CI 尚待首次运行；本地执行环境是 macOS，不能把配置检查视为 Windows 实测。后续运行结果在本节追加。
+2026-11-11 首次实测：[手动 Windows 构建 42944440561](https://github.com/qmtdlt/EasyCopy/actions/runs/42944440561)，源码提交 `e59fcaba2cd381e4e76c069705fe983b5b44e523`，版本 `0.1.0`。Windows Server 2022 runner 上 release NSIS 构建成功，安装验证报告 `result: passed`，上述 21 条断言全部通过（其中包含覆盖安装后的重复检查）。安装包及独立验证报告均已上传。
+
+本机 macOS 另外完成 actionlint、合并配置的 Tauri JSON Schema 检查、两个 PowerShell 脚本的语法解析。真实 Windows 检查来自 CI runner；没有把本机静态检查当作 Windows 实测。卸载 smoke 使用 NSIS 的原地卸载参数等待结果，验证程序、快捷方式和注册项移除，不代表卸载器自身的延迟删除已验收。
 
 正式对外提供安装包前仍需真实 Windows 10/11 x64 验收：
 
