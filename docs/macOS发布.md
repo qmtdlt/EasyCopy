@@ -11,6 +11,8 @@
 
 三个平台成功后，统一入口验证每个包的 SHA-256，生成 `SHA256SUMS`，由唯一 job 创建同一个 GitHub Release。任意构建或校验失败，都不会发布不完整的桌面版本。不要在单个平台流程中单独创建 Release。
 
+正式附件保留带版本号的三个安装包，同时提供 `EasyCopy_macos_arm64.dmg`、`EasyCopy_macos_x64.dmg`、`EasyCopy_windows_x64_setup.exe` 三个内容相同的固定名称副本，全部纳入 `SHA256SUMS`。官网通过 `https://github.com/qmtdlt/EasyCopy/releases/latest/download/固定文件名` 下载最新正式桌面版。流水线先上传到草稿 Release，再下载全部附件逐字节比较并校验 SHA-256，通过后公开并设为 Latest；失败时保留草稿供检查，不覆盖已有 Release。
+
 ## 仓库凭据
 
 在 EasyCopy 仓库 Settings → Secrets and variables → Actions 配置；其他仓库的 Secrets 不能读回或自动继承。

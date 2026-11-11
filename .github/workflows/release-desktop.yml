@@ -79,6 +79,9 @@ jobs:
                   raise SystemExit(f'Checksum mismatch: {name}')
               shutil.copy2(package, out / name)
               hashes.append(f'{digest}  {name}\n')
+              alias = name.replace(f'_{v}_', '_', 1)
+              shutil.copy2(package, out / alias)
+              hashes.append(f'{digest}  {alias}\n')
           (out / 'SHA256SUMS').write_text(''.join(hashes))
           PY
       - uses: actions/upload-artifact@v4
@@ -101,4 +104,11 @@ jobs:
           - 首版不含自动更新；需自行部署中转服务。不提供 Linux 桌面客户端。
           - SHA256SUMS 对应最终安装包。CI 验证不等于真实设备完整安装及剪贴板同步验收。
           NOTES
-          gh release create "$TAG" desktop-release/* --verify-tag --title "EasyCopy ${TAG#desktop-}" --notes-file "$RUNNER_TEMP/release-notes.md"
+          set -euo pipefail
+          gh release create "$TAG" desktop-release/* --draft --verify-tag --title "EasyCopy ${TAG#desktop-}" --notes-file "$RUNNER_TEMP/release-notes.md"
+          verify_dir=$(mktemp -d)
+          trap 'rm -rf "$verify_dir"' EXIT
+          gh release download "$TAG" --dir "$verify_dir"
+          diff -qr desktop-release "$verify_dir"
+          (cd "$verify_dir" && sha256sum --check SHA256SUMS)
+          gh release edit "$TAG" --draft=false --latest
