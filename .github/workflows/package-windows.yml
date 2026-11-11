@@ -1,0 +1,64 @@
+name: Package Windows
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Expected source version (optional; does not change it)
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      version:
+        description: Expected source version (optional; does not change it)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      CARGO_TERM_COLOR: always
+      EXPECTED_VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - name: Install Rust MSVC
+        run: |
+          rustup toolchain install stable --profile minimal --target x86_64-pc-windows-msvc
+          if ($LASTEXITCODE -ne 0) { throw 'Rust install failed' }
+          rustup default stable
+          if ($LASTEXITCODE -ne 0) { throw 'Rust selection failed' }
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: windows-x64-nsis
+      - name: Build unsigned NSIS installer
+        run: ./script/package_windows.ps1 -ExpectedVersion $env:EXPECTED_VERSION
+      - name: Verify install, reinstall and uninstall
+        run: ./script/verify_windows_package.ps1
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64
+          path: .local/packages/windows-x64/*
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload verification report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-x64-verification
+          path: .local/verification/windows-package.json
+          if-no-files-found: ignore
+          retention-days: 14
