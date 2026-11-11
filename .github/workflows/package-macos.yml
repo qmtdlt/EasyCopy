@@ -1,0 +1,70 @@
+name: Package macOS
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+            target: aarch64-apple-darwin
+          - runner: macos-15-intel
+            arch: x64
+            target: x86_64-apple-darwin
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    env:
+      EASYCOPY_APPLE_TEAM_ID: ${{ vars.EASYCOPY_APPLE_TEAM_ID }}
+      EASYCOPY_CODESIGN_IDENTITY: ${{ vars.EASYCOPY_CODESIGN_IDENTITY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Require consistent version and signing credentials
+        env:
+          EASYCOPY_APPLE_CERTIFICATES_P12: ${{ secrets.EASYCOPY_APPLE_CERTIFICATES_P12 }}
+          EASYCOPY_APPLE_CERTIFICATES_PASSWORD: ${{ secrets.EASYCOPY_APPLE_CERTIFICATES_PASSWORD }}
+          EASYCOPY_APPLE_ID: ${{ secrets.EASYCOPY_APPLE_ID }}
+          EASYCOPY_APPLE_APP_PASSWORD: ${{ secrets.EASYCOPY_APPLE_APP_PASSWORD }}
+        run: |
+          PYTHONPATH=script python3 -c 'from macos_release import version; print("Desktop version:", version())'
+          python3 script/prepare-macos-signing.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: macos-${{ matrix.arch }}
+      - run: npm ci
+        working-directory: apps/desktop
+      - run: npm test
+        working-directory: apps/desktop
+      - name: Build, sign, notarize and verify DMG
+        env:
+          ARCH: ${{ matrix.arch }}
+        run: python3 script/package-macos.py --arch "$ARCH" --notary-profile easycopy-notary --keychain "$RUNNER_TEMP/easycopy-signing.keychain-db"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.arch }}
+          path: |
+            dist/macos/${{ matrix.arch }}/*.dmg
+            dist/macos/${{ matrix.arch }}/*.dmg.sha256
+          if-no-files-found: error
+          retention-days: 14
+      - name: Remove signing credentials
+        if: always()
+        run: python3 script/prepare-macos-signing.py --cleanup

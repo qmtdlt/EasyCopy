@@ -8,6 +8,12 @@ Mac 与 Windows 双向剪贴板同步。Rust 核心与 Linux 中转服务，Taur
 
 使用者需自行部署中转服务。项目不提供公共中转服务器；部署记录中的内网地址及本机路径仅用于记录维护者的环境，请替换为自己的配置。不要提交配对串、私钥、客户端凭据或运行数据。
 
+## 安装包与发布
+
+桌面安装包提供 macOS Apple Silicon / Intel DMG 和 Windows x64 NSIS。Mac 发布包必须完成 Developer ID 签名和 Apple 公证；Windows 首版未签名。首版不含自动更新，暂不提供 Linux 桌面客户端。
+
+打包与验证步骤见 [macOS 发布](docs/macOS发布.md)、[Windows 发布](docs/Windows发布.md) 和 [中转服务发布](docs/中转服务发布.md)。桌面 `desktop-v*` 与中转 `relay-v*` 标签独立；手动 Actions 只验证，不公开 Release 或正式镜像。正式发布前请以对应文档的验收记录为准。
+
 ## 本机运行
 
 需要 Rust 1.90+、Node.js 22+、Xcode Command Line Tools（macOS）。依赖版本固定于 Cargo.lock 和 package-lock.json。

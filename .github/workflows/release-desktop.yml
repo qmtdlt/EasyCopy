@@ -1,0 +1,104 @@
+name: Release desktop
+
+on:
+  push:
+    tags: ['desktop-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check source versions and desktop tag
+        run: PYTHONPATH=script python3 -c 'from macos_release import version; print(version())'
+  macos:
+    needs: version
+    uses: ./.github/workflows/package-macos.yml
+    secrets: inherit
+  windows:
+    needs: version
+    uses: ./.github/workflows/package-windows.yml
+  collect:
+    needs: [macos, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-arm64
+          path: artifacts/macos-arm64
+      - uses: actions/download-artifact@v4
+        with:
+          name: macos-x64
+          path: artifacts/macos-x64
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-x64
+          path: artifacts/windows-x64
+      - name: Verify all packages and assemble final checksums
+        run: |
+          PYTHONPATH=script python3 - <<'PY'
+          from pathlib import Path
+          import shutil
+          from macos_release import checksum, version
+          v = version()
+          expected = {
+              'macos-arm64': f'EasyCopy_{v}_macos_arm64.dmg',
+              'macos-x64': f'EasyCopy_{v}_macos_x64.dmg',
+              'windows-x64': f'EasyCopy_{v}_windows_x64_setup.exe',
+          }
+          out = Path('desktop-release')
+          out.mkdir()
+          hashes = []
+          for artifact, name in expected.items():
+              folder = Path('artifacts') / artifact
+              package = folder / name
+              sidecar = folder / (name + '.sha256')
+              if {p.name for p in folder.iterdir()} != {name, name + '.sha256'}:
+                  raise SystemExit(f'Unexpected artifact payload: {artifact}')
+              if not package.is_file() or package.stat().st_size == 0:
+                  raise SystemExit(f'Missing package: {name}')
+              digest = checksum(package)
+              if sidecar.read_text(encoding='utf-8-sig').strip() != f'{digest}  {name}':
+                  raise SystemExit(f'Checksum mismatch: {name}')
+              shutil.copy2(package, out / name)
+              hashes.append(f'{digest}  {name}\n')
+          (out / 'SHA256SUMS').write_text(''.join(hashes))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-release-candidate
+          path: desktop-release/*
+          if-no-files-found: error
+          retention-days: 14
+      - name: Publish one complete desktop release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/desktop-v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          cat > "$RUNNER_TEMP/release-notes.md" <<'NOTES'
+          EasyCopy 桌面客户端。
+
+          - macOS 12+：Apple Silicon 与 Intel DMG，Developer ID 签名、Apple 公证及 Gatekeeper 校验通过。
+          - Windows x64：NSIS 安装包，尚未 Authenticode 签名，可能显示 SmartScreen 提示。
+          - 首版不含自动更新；需自行部署中转服务。不提供 Linux 桌面客户端。
+          - SHA256SUMS 对应最终安装包。CI 验证不等于真实设备完整安装及剪贴板同步验收。
+          NOTES
+          gh release create "$TAG" desktop-release/* --verify-tag --title "EasyCopy ${TAG#desktop-}" --notes-file "$RUNNER_TEMP/release-notes.md"
