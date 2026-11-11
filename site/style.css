@@ -22,8 +22,8 @@ a:focus-visible,button:focus-visible,summary:focus-visible { outline:3px solid v
 .navigation nav { display:flex; align-items:center; gap:30px; margin-left:auto; font-size:14px; font-weight:550; }
 .navigation nav a { padding-block:12px; }
 .navigation nav a:hover,.site-footer a:hover { color:var(--accent); text-decoration:underline; text-underline-offset:5px; }
-.theme-toggle { width:36px; height:36px; display:grid; place-items:center; padding:0; border:1px solid var(--line); border-radius:50%; color:var(--text); background:transparent; font-size:23px; cursor:pointer; flex-shrink:0; }
-.theme-toggle:hover { background:var(--soft); }
+.theme-toggle { width:36px; height:36px; display:grid; place-items:center; padding:0; border:0; color:var(--text); background:transparent; font-size:23px; cursor:pointer; flex-shrink:0; }
+.theme-toggle:hover { opacity:.7; }
 .hero { display:grid; grid-template-columns:.86fr 1.14fr; align-items:center; gap:48px; padding-block:82px 72px; }
 .eyebrow { color:var(--accent); font-size:12px; font-weight:650; letter-spacing:2.2px; margin-bottom:24px; }
 h1 { font-size:clamp(42px,4.5vw,64px); line-height:1.22; letter-spacing:-2.4px; font-weight:650; }
