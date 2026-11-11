@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://qmtdlt.github.io/EasyCopy/sitemap.xml

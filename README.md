@@ -1,5 +1,7 @@
 # EasyCopy
 
+[官网与下载](https://qmtdlt.github.io/EasyCopy/) · [官网维护说明](docs/官网.md)
+
 Mac 与 Windows 双向剪贴板同步。Rust 核心与 Linux 中转服务，Tauri 2 + Vue 3 桌面客户端。文本用 UTF-8，图片内容用 PNG；文件与目录流式封装 TAR，接收端校验、还原到本地缓存后写入系统文件引用。
 
 ## 开源许可
