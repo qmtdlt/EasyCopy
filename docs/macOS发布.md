@@ -70,6 +70,19 @@ Intel 目标使用 `--arch x64`，本地交叉构建不代表已在 Intel 机器
 
 ## 验收记录
 
-2026-11-11：正在建立并验证打包链路。实际 CI 运行结果将在验证后补充；在有成功证据前不得声称两架构签名公证完成。CI 中的包校验不能代替 Apple Silicon/Intel 实机安装、首次启动、权限授权、既有配置升级和真实跨设备剪贴板同步验收。
+2026-11-11：四份 Actions 工作流通过 actionlint 1.7.12；Mac Python 脚本语法、版本一致性、错误标签拒绝、缺凭据提前停止与空清理检查通过。本机 Apple Silicon 上分别完成 ARM64 原生构建和 Intel 交叉构建，两个 `.app` 都通过架构、应用标识、最低系统版本、局域网用途说明、Developer ID、时间戳、hardened runtime 及嵌套签名验证。ARM64 临时 DMG 的创建、Developer ID 签名、镜像完整性、只读挂载及包内容检查也通过，临时镜像已删除。
+
+已为 EasyCopy 单独配置证书 Secrets 和签名变量，维护者直接填写了 Apple 公证账号与专用密码。[桌面统一手动运行 42945384612](https://github.com/qmtdlt/EasyCopy/actions/runs/42945384612) 全部成功，源码提交为 `6ffff329602de642887b9c806b7bfe90d6cc4e31`。ARM64 和 Intel 都在对应原生 runner 完成构建、Developer ID 签名、公证、票据附加、镜像/载荷检查及 DMG/内部应用的 Gatekeeper 验证，结果均为 `Notarized Developer ID`（验证通过）。两端临时钥匙串清理成功。
+
+| 架构 | Apple 公证提交 ID | 结果 | Actions artifact |
+| --- | --- | --- | --- |
+| Apple Silicon | `966abe32-629d-4751-9f32-442ea3cd83ce` | Accepted | [macos-arm64](https://github.com/qmtdlt/EasyCopy/actions/runs/42945384612/artifacts/13821729140) |
+| Intel | `65d487fe-bfb6-4702-8114-6cb06b5427b5` | Accepted | [macos-x64](https://github.com/qmtdlt/EasyCopy/actions/runs/42945384612/artifacts/13822553491) |
+
+同一次运行的 Windows 安装验证也成功，汇总 job 校验三个包的 sidecar 后生成统一 `SHA256SUMS`，产出 [desktop-release-candidate](https://github.com/qmtdlt/EasyCopy/actions/runs/42945384612/artifacts/13822104867)。公开 Release 步骤为 `skipped`，没有创建正式标签、Release 或 GHCR 镜像，也没有部署服务器。Actions artifacts 保留 14 天。
+
+两个最终 DMG 均已下载到本机 Apple Silicon Mac，并独立通过 SHA-256、Developer ID、票据、Gatekeeper、镜像及挂载应用复核。文件分别位于 `dist/macos/arm64/EasyCopy_0.1.0_macos_arm64.dmg` 与 `dist/macos/x64/EasyCopy_0.1.0_macos_x64.dmg`，同目录包含对应 `.sha256`；产物未纳入 Git。该复核没有安装或启动应用。
+
+尚未执行 Apple Silicon/Intel 实机安装、首次启动、权限授权、既有配置升级和真实跨设备剪贴板同步验收。Windows 仍未 Authenticode 签名。正式标签触发及公开 Release 上传尚未执行，不把手动验证等同于正式发布。
 
 官方依据：[Tauri macOS 签名](https://v2.tauri.app/distribute/sign/macos/)、[Apple 公证工作流](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow)。
