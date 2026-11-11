@@ -1,0 +1,29 @@
+# The public release path is independent of the existing Mac offline build.
+FROM rust:1.97.0-bookworm AS builder
+WORKDIR /build
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
+COPY apps/desktop/src-tauri ./apps/desktop/src-tauri
+RUN test "$(uname -m)" = x86_64 \
+    && rustc --version \
+    && cargo test --locked -p easycopy-protocol -p easycopy-relay \
+    && cargo build --locked --release -p easycopy-relay
+
+FROM debian:bookworm-slim
+ARG VERSION
+ARG REVISION
+LABEL org.opencontainers.image.source="https://github.com/qmtdlt/EasyCopy" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.version="$VERSION" \
+      org.opencontainers.image.revision="$REVISION"
+RUN groupadd --gid 10001 easycopy \
+    && useradd --uid 10001 --gid 10001 --no-create-home easycopy \
+    && install -d -m 0700 -o 10001 -g 10001 /data
+COPY --from=builder /build/target/release/easycopy-relay /usr/local/bin/easycopy-relay
+USER 10001:10001
+ENV EASYCOPY_DATA=/data EASYCOPY_BIND=0.0.0.0:8443
+VOLUME ["/data"]
+EXPOSE 8443
+HEALTHCHECK --interval=10s --timeout=8s --start-period=10s --retries=6 CMD ["/usr/local/bin/easycopy-relay", "healthcheck"]
+ENTRYPOINT ["/usr/local/bin/easycopy-relay"]
+CMD ["serve"]

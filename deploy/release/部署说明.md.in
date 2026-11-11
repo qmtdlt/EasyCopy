@@ -1,0 +1,72 @@
+# EasyCopy 中转服务 @VERSION@
+
+仅支持 Linux x64（Intel/AMD，`linux/amd64`）。需要 Docker Engine 与 Docker Compose v2，至少预留 1 GiB 空间及实际文件容量。镜像不含服务器身份或用户数据，首次启动在命名卷中生成自己的身份。
+
+## 首次启动
+
+下载同一 Release 的 `compose.yaml`，放入独立目录，在该目录执行：
+
+```sh
+docker compose up -d
+docker compose ps
+docker compose exec -T relay easycopy-relay pairing
+```
+
+等待状态变为 `healthy`。将最后输出的完整 `easycopy1:…` 连接密钥填入客户端；该密钥是凭据，请只通过可信方式交给自己的设备。客户端服务器地址填写可达的服务器 IP 或域名，默认端口 `8443`。容器内监听 `0.0.0.0:8443`，修改宿主端口可以在同目录 `.env` 中写入 `EASYCOPY_PORT=9443`，然后重建容器；客户端对应填写 `9443`。无需修改容器监听地址或证书。
+
+镜像固定为 `ghcr.io/qmtdlt/easycopy-relay:@VERSION@`，Compose 直接拉取成品，不在服务器编译源码。新服务器请自行确保所选 TCP 端口可从客户端访问。HTTPS 使用配对串中的私有 CA；浏览器证书警告不代表服务故障。
+
+## 离线加载
+
+无法访问 GHCR 时，下载本 Release 的全部附件到同一目录，先校验再加载：
+
+```sh
+sha256sum --check SHA256SUMS
+docker image load --input easycopy-relay-linux-amd64-@VERSION@.tar.gz
+docker compose up -d --no-build --pull never
+docker compose exec -T relay easycopy-relay pairing
+```
+
+macOS 上校验可使用 `shasum -a 256 -c SHA256SUMS`。手动 Actions 验证产物的镜像没有推送 GHCR，必须使用本离线加载方式，不可直接在线拉取。
+
+## 查看与重启
+
+```sh
+docker compose ps
+docker compose logs --tail 100 relay
+docker compose exec -T relay easycopy-relay healthcheck
+docker compose restart relay
+```
+
+非 root UID/GID 为 `10001:10001`，根文件系统只读、删除 Linux capabilities、禁止权限提升；日志单文件 10 MiB，最多 3 个，自动重启策略 `unless-stopped`。数据保存在 `easycopy_relay-data` 命名卷的 `/data` 中。不要用任意宿主目录替换该卷；绑定目录需要自行设置正确的属主和权限。
+
+## 备份、升级和回退
+
+升级前备份**整个**数据卷，包含身份、私钥、SQLite 与载荷，不要只备份数据库。以下操作会短暂停止服务；备份不得上传 Git 或放入发行镜像。
+
+```sh
+set -eu
+umask 077
+mkdir -p backups
+docker compose stop relay
+trap 'docker compose start relay' EXIT
+container=$(docker compose ps --all --quiet relay)
+docker cp "$container":/data/. "backups/data-$(date +%Y%m%d-%H%M%S)"
+docker compose start relay
+trap - EXIT
+```
+
+保留旧 `compose.yaml`，用新版本附件替换它，在同一项目名下执行 `docker compose up -d`，或离线加载后使用 `--pull never`。不要更改 `name: easycopy`、卷名，或执行 `docker compose down -v`。容器重建会复用命名卷，所以原客户端无需重新配对。若旧部署使用了自定义 `-p` 项目名，继续使用原项目名；迁移到另一台服务器需要恢复完整卷和属主。
+
+故障时可使用保留的旧 Compose/镜像重建容器。跨版本若改变数据库格式，需要同时恢复对应升级前备份，不能保证旧程序能读取新数据库。发布验收覆盖同一版本容器替换与数据保留，不等于任意历史版本迁移或完整备份恢复演练。
+
+## Snap Docker 特例
+
+仅当 Snap Docker 报 AppArmor `no new privs` / `operation not permitted`，并已确认与此限制冲突时，增加 `compose.snap.yaml`：
+
+```sh
+docker compose -f compose.yaml -f compose.snap.yaml up -d
+docker compose -f compose.yaml -f compose.snap.yaml exec -T relay easycopy-relay pairing
+```
+
+此后所有 Compose 操作都使用这两个文件。覆盖文件需要 Compose 2.24.4+ 的 `!override` 支持，仅取消 `no-new-privileges`；非 root、只读根目录、默认 seccomp、AppArmor 和删除 capabilities 均保留。普通 Docker 不使用此特例。

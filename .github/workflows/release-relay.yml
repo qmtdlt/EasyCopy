@@ -1,0 +1,131 @@
+name: Release relay Linux x64
+
+on:
+  push:
+    tags:
+      - 'relay-v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: relay-release-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Test and package linux/amd64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Select release or validation version
+        id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT_NAME" == push ]]; then
+            [[ "$REF_NAME" =~ ^relay-v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]] || { echo 'Invalid relay version tag'; exit 1; }
+            version="${REF_NAME#relay-v}"
+          else
+            version="validation-${GITHUB_SHA:0:12}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Compile, test and build release image
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = x86_64
+          docker build --platform linux/amd64 --progress plain \
+            --file deploy/Dockerfile.release \
+            --build-arg "VERSION=$VERSION" --build-arg "REVISION=$GITHUB_SHA" \
+            --tag "ghcr.io/qmtdlt/easycopy-relay:$VERSION" .
+      - name: Export distribution files and verify offline load
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 script/relay-package.py "$VERSION" relay-dist
+          (cd relay-dist && sha256sum --check SHA256SUMS)
+          docker image rm "ghcr.io/qmtdlt/easycopy-relay:$VERSION"
+          docker image load --input "relay-dist/easycopy-relay-linux-amd64-$VERSION.tar.gz"
+      - name: Verify released Compose, authentication, transfer and volume retention
+        run: python3 script/relay-smoke.py relay-dist/compose.yaml
+      - uses: actions/upload-artifact@v4
+        with:
+          name: easycopy-relay-linux-amd64-${{ steps.version.outputs.version }}
+          path: relay-dist/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Summarize validation
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          {
+            echo '### Relay Linux x64 validation passed'
+            echo "Version: \`$VERSION\`; source: \`$GITHUB_SHA\`."
+            echo '- Locked Rust tests, amd64 image build, archive checksums and docker load passed.'
+            echo '- Non-root Compose boot, health, trusted TLS, authentication and transfer passed.'
+            echo '- Separate volumes generate independent identities; container replacement preserves identity and payload.'
+            echo '- workflow_dispatch only uploads Actions artifacts; no GHCR or Release publication.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    name: Publish version image and GitHub Release
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/relay-v') && github.repository == 'qmtdlt/EasyCopy'
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      packages: write
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: easycopy-relay-linux-amd64-${{ needs.build.outputs.version }}
+          path: relay-dist
+      - name: Load the exact validated artifact
+        run: |
+          set -euo pipefail
+          (cd relay-dist && sha256sum --check SHA256SUMS)
+          docker image load --input "relay-dist/easycopy-relay-linux-amd64-$VERSION.tar.gz"
+      - name: Authenticate and push version image
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          docker push "ghcr.io/qmtdlt/easycopy-relay:$VERSION"
+      - name: Require anonymous GHCR access before advertising a release
+        run: |
+          set -euo pipefail
+          # A new GHCR package can default to private, even for a public repository.
+          # An empty client config proves the image works without a GitHub login.
+          anonymous_config=$(mktemp -d)
+          trap 'rm -rf "$anonymous_config"' EXIT
+          if ! DOCKER_CONFIG="$anonymous_config" docker manifest inspect "ghcr.io/qmtdlt/easycopy-relay:$VERSION" > /dev/null; then
+            echo '::error::Set the easycopy-relay package visibility to Public in GitHub package settings, then re-run failed jobs. No GitHub Release has been created.'
+            exit 1
+          fi
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          flags=(--latest=false)
+          if [[ "$VERSION" == *-* ]]; then flags+=(--prerelease); fi
+          gh release create "$TAG" --verify-tag --title "EasyCopy Relay $VERSION" \
+            --notes-file relay-dist/部署说明.md "${flags[@]}" relay-dist/*
+      - name: Log out
+        if: always()
+        run: docker logout ghcr.io

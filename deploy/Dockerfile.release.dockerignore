@@ -1,0 +1,15 @@
+# Release context contains source only, never local identities or build caches.
+**
+!Cargo.toml
+!Cargo.lock
+!crates/
+!crates/**/
+!crates/**/*.toml
+!crates/**/*.rs
+!apps/
+!apps/desktop/
+!apps/desktop/src-tauri/
+!apps/desktop/src-tauri/Cargo.toml
+!apps/desktop/src-tauri/build.rs
+!apps/desktop/src-tauri/src/
+!apps/desktop/src-tauri/src/**/*.rs
