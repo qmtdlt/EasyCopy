@@ -88,3 +88,9 @@ Intel 目标使用 `--arch x64`，本地交叉构建不代表已在 Intel 机器
 尚未执行 Apple Silicon/Intel 实机安装、首次启动、权限授权、既有配置升级和真实跨设备剪贴板同步验收。Windows 仍未 Authenticode 签名。正式标签触发及公开 Release 上传尚未执行，不把手动验证等同于正式发布。
 
 官方依据：[Tauri macOS 签名](https://v2.tauri.app/distribute/sign/macos/)、[Apple 公证工作流](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow)。
+
+## 首次正式发布记录
+
+2026-11-11 经用户授权，推送 `desktop-v0.1.0`，源码提交 `c5c21aabda3f87427bd00ef593237c26decb624d`。[正式运行 42949212409](https://github.com/qmtdlt/EasyCopy/actions/runs/42949212409) 全部通过：两个 Mac 原生架构分别重新构建、签名、公证并校验，Windows 构建及安装验证通过，统一汇总核验全部附件后公开 [EasyCopy v0.1.0](https://github.com/qmtdlt/EasyCopy/releases/tag/desktop-v0.1.0) 并设为 Latest。
+
+Release 包含三个带版本号的安装包、三个内容相同的固定下载名称副本及 `SHA256SUMS`，共七个附件。公开前已从草稿下载全部附件，与构建产物逐字节比较并验证六个包的 SHA-256；公开后再次匿名下载六个包校验通过，三个 Latest 固定下载入口返回的内容也与对应版本包完全一致。Windows 未签名、无自动更新和需自建中转服务均已写入发布说明；本次未新增真实设备手动安装、升级与跨设备剪贴板验收。
