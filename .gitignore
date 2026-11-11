@@ -7,3 +7,10 @@ dist/
 *.tsbuildinfo
 apps/desktop/src-tauri/gen/
 data/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx

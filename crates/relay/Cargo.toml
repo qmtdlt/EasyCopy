@@ -2,6 +2,7 @@
 name = "easycopy-relay"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
 
 [dependencies]
 easycopy-protocol = { path = "../protocol" }
