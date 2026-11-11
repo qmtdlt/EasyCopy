@@ -125,7 +125,7 @@ jobs:
           flags=()
           if [[ "$VERSION" == *-* ]]; then flags+=(--prerelease); fi
           gh release create "$TAG" --draft --verify-tag --title "EasyCopy Relay $VERSION" \
-            --notes-file relay-dist/部署说明.md "${flags[@]}" relay-dist/*
+            --notes-file relay-dist/README.md "${flags[@]}" relay-dist/*
           verify_dir=$(mktemp -d)
           trap 'rm -rf "$verify_dir"' EXIT
           gh release download "$TAG" --dir "$verify_dir"

@@ -28,7 +28,7 @@ with archive.open("wb") as raw, gzip.GzipFile(fileobj=raw, mode="wb", mtime=0) a
         process.stdout.close()
     if process.wait() != 0:
         raise SystemExit("docker image save failed")
-for source, destination in [("compose.yaml.in", "compose.yaml"), ("部署说明.md.in", "部署说明.md")]:
+for source, destination in [("compose.yaml.in", "compose.yaml"), ("部署说明.md.in", "README.md")]:
     content = (root / "deploy/release" / source).read_text()
     (args.output / destination).write_text(content.replace("@VERSION@", args.version))
 shutil.copyfile(root / "deploy/compose.snap.yaml", args.output / "compose.snap.yaml")
